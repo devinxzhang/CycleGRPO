@@ -1,0 +1,458 @@
+import argparse
+import math
+import os
+import time
+import torch
+import tqdm
+from pycocotools import mask as mask_utils
+import numpy as np
+import copy
+import hydra
+
+from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+
+from PIL import Image
+import re
+import json
+
+from qwen_vl_utils import process_vision_info
+from torchvision.transforms.functional import to_pil_image
+from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+from projects.vlm.tokenmask.evaluation.utils import _init_dist_pytorch, get_dist_info, collect_results_cpu
+
+
+class DirectResize:
+    def __init__(self, target_length: int) -> None:
+        self.target_length = target_length
+
+    def apply_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        Expects a numpy array with shape HxWxC in uint8 format.
+        """
+        img = to_pil_image(image, mode='RGB')
+        return np.array(img.resize((self.target_length, self.target_length)))
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='GCG')
+    parser.add_argument(
+        '--model_path',
+        default="zhouyik/Qwen3-VL-4B-SAMTok-co",
+        help='hf model path.')
+    parser.add_argument(
+        '--vq_sam2_path',
+        default="Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth",
+        help='vq-sam2 model path.')
+    parser.add_argument(
+        '--split',
+        default='val',
+        help='Specify a split')
+    parser.add_argument(
+        '--sam2_path',
+        default="Qwen/sam2.1_hiera_large.pt",
+        help='sam2 model path.')
+    parser.add_argument(
+        '--save_dir',
+        default='./results/gcg/',
+        help='save path')
+    parser.add_argument(
+        '--launcher',
+        choices=['none', 'pytorch', 'slurm', 'mpi'],
+        default='none',
+        help='job launcher')
+    parser.add_argument('--task_id', '--task-id', type=int, default=0,
+                        help='Shard index for this process (0 .. num_tasks-1), launcher=none.')
+    parser.add_argument('--num_tasks', '--num-tasks', type=int, default=1,
+                        help='Total number of shards / data-parallel processes (one per GPU).')
+    parser.add_argument('--gpu_id', '--gpu-id', type=int, default=-1,
+                        help='CUDA device to bind this process to. Default -1 => use task_id.')
+    parser.add_argument('--local_rank', '--local-rank', type=int, default=0)
+    args = parser.parse_args()
+    if 'LOCAL_RANK' not in os.environ:
+        os.environ['LOCAL_RANK'] = str(args.local_rank)
+    return args
+
+
+def load_image_with_retry(path, retries=6, base_delay=0.5):
+    """Open an image, retrying transient NAS I/O failures with backoff."""
+    last = None
+    for i in range(retries):
+        try:
+            return Image.open(path).convert('RGB')
+        except Exception as e:  # noqa: BLE001
+            last = e
+            time.sleep(base_delay * (2 ** i))  # 0.5, 1, 2, 4, 8, 16s
+    raise last
+
+# download from https://huggingface.co/datasets/Dense-World/Sa2VA-Training
+IMAGE_FOLDER = '<PATH_TO_DATA>/Sa2VA-Training/glamm_data/images/grandf/val_test'
+
+
+class GCGInferenceDataset:
+    def __init__(self,
+                 image_folder,
+                 save_dir=None,
+                 ):
+        self.image_folder = image_folder
+
+        # sort: deterministic order so all shards agree on the slice boundaries
+        self.images = sorted(os.listdir(image_folder))
+
+        if save_dir is not None:
+            # filter evaluated
+            self.save_dir = save_dir
+            exsits_files = os.listdir(self.save_dir)
+            exsits_files = [_file[:-5] for _file in exsits_files]
+            _images = []
+            for i, item in enumerate(self.images):
+                if item[:-4] not in exsits_files:
+                    _images.append(item)
+            self.images = _images
+
+    def __len__(self):
+        return len(self.images)
+
+    def get_questions(self):
+        question = "Could you please give me a brief description of the image? Please respond with interleaved segmentation masks for the corresponding parts of the answer."
+        return question
+
+    def __getitem__(self, index):
+        data_dict = {}
+        questions = self.get_questions()
+        image_file = self.images[index]
+        data_dict['image_file'] = image_file
+
+        image_file = os.path.join(self.image_folder, image_file)
+        image = load_image_with_retry(image_file)
+
+        data_dict['image'] = image
+        data_dict['text'] = "<image>\n" + questions
+
+        data_dict['img_id'] = image_file
+        return data_dict
+
+def extract_mt_token_ids(text):
+    pattern = r"<\|mt_(\d{4})\|>"
+    return [int(x) for x in re.findall(pattern, text)]
+
+
+def remove_special_tokens(text):
+    pattern = r"<\|mt_(start|end|\d{4})\|>"
+    return re.sub(pattern, "", text)
+
+def fix_mt_format(text):
+    """
+    使用正则表达式查找并修正不完整的 <|mt_...> 格式。
+    这个函数会处理以下几种情况：
+    1. 正确格式: <|mt_start|><|mt_0044|><|mt_0442|><|mt_end|> -> 不变
+    2. 错误格式 (缺少第二个token和end): <|mt_start|><|mt_0198|> -> <|mt_start|><|mt_0198|><|mt_9999|><|mt_end|>
+    3. 错误格式 (缺少第二个token但有end): <|mt_start|><|mt_0198|><|mt_end|> -> <|mt_start|><|mt_0198|><|mt_9999|><|mt_end|>
+    """
+    # 模式1: 匹配 <|mt_start|> + 一个token + <|mt_end|>
+    # (<\|mt_start\|>) - 捕获组1: <|mt_start|>
+    # (<\|mt_\d+\|>) - 捕获组2: <|mt_XXXX|>
+    # (<\|mt_end\|>) - 捕获组3: <|mt_end|>
+    pattern1 = r'(<\|mt_start\|>)(<\|mt_\d+\|>)(<\|mt_end\|>)'
+    # 替换逻辑1: 在中间插入 <|mt_-1|>
+    # \1 代表捕获组1的内容, \2 代表捕获组2的内容
+    replacement1 = r'\1\2<|mt_9999|><|mt_end|>'
+    text = re.sub(pattern1, replacement1, text)
+    # 模式2: 匹配 <|mt_start|> + 一个token，且后面不是另一个mt_token或mt_end
+    # (<\|mt_start\|>) - 捕获组1: <|mt_start|>
+    # (<\|mt_\d+\|>) - 捕获组2: <|mt_XXXX|>
+    # (?!<\|mt_) - 负向前瞻断言，确保后面不是 "<|mt_" 开头，避免匹配到正确格式的前半部分
+    pattern2 = r'(<\|mt_start\|>)(<\|mt_\d+\|>)(?!<\|mt_)'
+    # 替换逻辑2: 拼接上 <|mt_-1|> 和 <|mt_end|>
+    replacement2 = r'\1\2<|mt_9999|><|mt_end|>'
+    text = re.sub(pattern2, replacement2, text)
+    return text
+
+def fix_mt_format_comprehensive(text):
+    """
+    全面修正 <|mt_...> 格式的函数。
+    它会处理以下几种情况：
+    1. 标记太少 (1个): <|mt_start|><|mt_0198|><|mt_end|> -> <|mt_start|><|mt_0198|><|mt_-1|><|mt_end|>
+    2. 标记太少 (1个, 无end): <|mt_start|><|mt_0198|> -> <|mt_start|><|mt_0198|><|mt_-1|><|mt_end|>
+    3. 标记太多 (3个或以上): <|mt_start|><|mt_0186|><|mt_0410|><|mt_0186|><|mt_end|> -> <|mt_start|><|mt_0186|><|mt_0410|><|mt_end|>
+    4. 正确格式: <|mt_start|><|mt_0044|><|mt_0442|><|mt_end|> -> 不变
+    """
+    # 规则 1: 处理标记太多的情况 (3个或以上)
+    # 捕获前两个，匹配掉多余的，然后用前两个重构
+    pattern_too_many = r'(<\|mt_start\|>)(<\|mt_\d+\|>)(<\|mt_\d+\|>)(?:<\|mt_\d+\|>)+<\|mt_end\|>'
+    replacement_too_many = r'\1\2\3<|mt_end|>'
+    text = re.sub(pattern_too_many, replacement_too_many, text)
+    # 规则 2: 处理标记太少的情况 (只有1个，且有<|mt_end|>)
+    pattern_too_few_with_end = r'(<\|mt_start\|>)(<\|mt_\d+\|>)(<\|mt_end\|>)'
+    replacement_too_few = r'\1\2<|mt_9999|><|mt_end|>'
+    text = re.sub(pattern_too_few_with_end, replacement_too_few, text)
+    # 规则 3: 处理标记太少的情况 (只有1个，且没有<|mt_end|>)
+    # 使用负向前瞻确保后面不是另一个mt_token
+    pattern_too_few_no_end = r'(<\|mt_start\|>)(<\|mt_\d+\|>)(?!<\|mt_)'
+    replacement_too_few_no_end = r'\1\2<|mt_9999|><|mt_end|>'
+    text = re.sub(pattern_too_few_no_end, replacement_too_few_no_end, text)
+    return text
+
+
+def main():
+    args = parse_args()
+
+    if args.launcher != 'none':
+        # torchrun / DDP path
+        _init_dist_pytorch('nccl')
+        rank, world_size = get_dist_info()
+        gpu_id = rank
+        torch.cuda.set_device(gpu_id)
+    else:
+        # simple task_id sharding: one process per GPU, no torch.distributed
+        rank = args.task_id
+        world_size = args.num_tasks
+        gpu_id = args.task_id if args.gpu_id < 0 else args.gpu_id
+        torch.cuda.set_device(gpu_id)
+    device = torch.device(f"cuda:{gpu_id}")
+    print(f"[task {rank}/{world_size}] using GPU {gpu_id}")
+
+    model = Qwen3VLForConditionalGeneration.from_pretrained(
+        args.model_path, torch_dtype="auto"
+    ).to(device).eval()
+
+    processor = AutoProcessor.from_pretrained(args.model_path)
+
+    # build vq-sam2 model
+    CODEBOOK_SIZE = 256
+    CODEBOOK_DEPTH = 2
+    with hydra.initialize(version_base=None, config_path='../../projects/transformers/vq_sam2/sam2/sam2_configs'):
+        sam2_config = SAM2Config(
+            cfg_path="sam2.1_hiera_l.yaml",
+            ckpt_path=args.sam2_path,
+        )
+        vq_sam2_config = VQ_SAM2Config(
+            sam2_config=sam2_config,
+            codebook_size=CODEBOOK_SIZE,
+            codebook_depth=CODEBOOK_DEPTH,
+            shared_codebook=False,
+            latent_dim=256,
+        )
+
+    vq_sam2 = VQ_SAM2(vq_sam2_config).to(device).eval()
+
+    state = torch.load(args.vq_sam2_path, map_location="cpu")
+    vq_sam2.load_state_dict(state)
+
+    sam2_image_processor = DirectResize(1024)
+
+
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir, exist_ok=True)
+
+    dataset = GCGInferenceDataset(
+        image_folder=IMAGE_FOLDER,
+        save_dir=args.save_dir,
+    )
+
+    results = []
+    n_samples = len(dataset)
+
+    # shard the (sorted, resume-filtered) sample list across world_size processes
+    per_rank_samples = math.ceil(n_samples / world_size)
+    start_idx = per_rank_samples * rank
+    end_idx = min(n_samples, per_rank_samples * (rank + 1))
+    print(f"[task {rank}/{world_size}] samples {start_idx}:{end_idx} of {n_samples}")
+
+    for idx in tqdm.tqdm(range(start_idx, end_idx)):
+        data_batch = dataset[idx]
+        prediction = {'img_id': data_batch['img_id'], 'image_file': data_batch['image_file']}
+        del data_batch['img_id'], data_batch['image_file']
+
+        w, h = data_batch['image'].size
+
+        image_file= prediction['image_file']
+        image_file = os.path.join(IMAGE_FOLDER, image_file)
+        question = data_batch['text'].replace('<image>\n', '').strip()
+        # print(f"Processing {image_file} with question: {question}")
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "image": image_file,
+                    },
+                    {"type": "text", "text": question},
+                ],
+            }
+        ]
+
+        # print(messages)
+        # exit(0)
+
+        text = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        )
+        inputs = inputs.to(device)
+
+        # Inference: Generation of the output
+        generated_ids = model.generate(
+            **inputs, 
+            max_new_tokens=512,
+            do_sample=False, 
+            top_p=1.0,  
+        )
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_text = processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=False, clean_up_tokenization_spaces=False
+        )
+        print("Assistant: ", output_text)
+        output_text = [output_text[0].replace('<think>\n\n</think>\n\n', '')]
+
+        quant_ids = extract_mt_token_ids(output_text[0])
+        if len(quant_ids) == 0:
+            print("No SEG !!!")
+            prediction['prediction_masks'] = torch.zeros((0, h, w), dtype=torch.bool)
+        else:
+            if len(quant_ids) % CODEBOOK_DEPTH != 0:
+                print("FORMAT ERROR: ", output_text)
+                output_text = [fix_mt_format_comprehensive(output_text[0])]
+                print("FIXED OUTPUT TEXT: ", output_text)
+                quant_ids = extract_mt_token_ids(output_text[0])
+            assert len(quant_ids) % CODEBOOK_DEPTH == 0
+            batch_size = len(quant_ids) // CODEBOOK_DEPTH
+            remap_quant_ids = []
+            for bs_id in range(batch_size):
+                chunk_quant_ids = quant_ids[bs_id*CODEBOOK_DEPTH:(bs_id+1)*CODEBOOK_DEPTH]
+                remap_chunk_quant_ids = [quant_id - book_id*CODEBOOK_SIZE for book_id, quant_id in enumerate(chunk_quant_ids)]
+                remap_chunk_quant_ids_error_handle = [quant_id if quant_id < CODEBOOK_SIZE else -1 for quant_id in remap_chunk_quant_ids]
+                remap_quant_ids.append(remap_chunk_quant_ids_error_handle)
+
+            image = load_image_with_retry(image_file)
+            ori_width, ori_height = image.size
+            sam2_image = np.array(image)
+            sam2_image = sam2_image_processor.apply_image(sam2_image)
+            sam2_pixel_values = torch.from_numpy(sam2_image).permute(2, 0, 1).contiguous()
+            sam2_pixel_values = sam2_pixel_values.unsqueeze(0).to(vq_sam2.dtype).to(vq_sam2.device)
+            sam2_pixel_values = sam2_pixel_values.repeat(batch_size, 1, 1, 1)
+
+            quant_ids = torch.LongTensor(remap_quant_ids).to(vq_sam2.device)
+
+            with torch.no_grad():
+                try:
+                    _pred_masks = vq_sam2.forward_with_codes(sam2_pixel_values, quant_ids)
+                except Exception as e:
+                    print(f"Error during forward_with_codes: {e}")
+                    _pred_masks = torch.zeros((batch_size, 1, ori_height, ori_width), device=vq_sam2.device)
+            _pred_masks = torch.nn.functional.interpolate(_pred_masks, size=(ori_height, ori_width), mode='bilinear')
+            _pred_masks = _pred_masks > 0.5
+            _pred_masks = _pred_masks[:, 0, :, :].cpu().numpy().astype(np.uint8)
+            prediction['prediction_masks'] = torch.from_numpy(_pred_masks).to(torch.bool)
+
+        process_and_save_output(
+            args.save_dir,
+            prediction['image_file'],
+            output_text[0],
+            prediction['prediction_masks']
+        )
+        results.append(output_text[0])
+
+    # collect_results_cpu needs torch.distributed; only meaningful in DDP mode.
+    # In task_id mode the real outputs are the per-image json files, so skip it.
+    if args.launcher != 'none':
+        results = collect_results_cpu(results, len(dataset), tmpdir='./gcg_eval_tmp')
+
+
+def process_and_save_output(output_dir, image_name, text_output, pred_masks):
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+
+    text_output = text_output.replace("<s>", "").replace("\n", "").replace("  ", " ")
+    text_output = text_output.split("ASSISTANT: ")[-1]
+
+    cleaned_str = re.sub(r'<.*?>', '', text_output)
+
+    pattern = re.compile(r'<\|object_ref_start\|>(.*?)<\|object_ref_end\|>')
+    phrases = pattern.findall(text_output)
+    phrases = [p.strip() for p in phrases]
+
+    # Remove the [SEG] token
+    # cleaned_str = cleaned_str.replace('[SEG]', '')
+    cleaned_str = remove_special_tokens(cleaned_str)
+
+    # Strip unnecessary spaces
+    cleaned_str = ' '.join(cleaned_str.split()).strip("'")
+    cleaned_str = cleaned_str.strip()
+
+    # Convert the predicted masks into RLE format
+    pred_masks_tensor = pred_masks.cpu()
+    uncompressed_mask_rles = mask_to_rle_pytorch(pred_masks_tensor)
+    rle_masks = []
+    for m in uncompressed_mask_rles:
+        rle_masks.append(coco_encode_rle(m))
+
+    # Create results dictionary
+    # print(f"clean_str: {cleaned_str}")
+    result_dict = {
+        "image_id": image_name[:-4],
+        "caption": cleaned_str,
+        "phrases": phrases,
+        "pred_masks": rle_masks
+    }
+
+    # print(cleaned_str)
+    # print(phrases)
+
+    output_path = f"{output_dir}/{image_name[:-4]}.json"
+
+    # 如果输出已存在则跳过写入
+    if os.path.exists(output_path):
+        return
+
+    with open(output_path, 'w') as f:
+        json.dump(result_dict, f)
+
+    return
+
+def mask_to_rle_pytorch(tensor: torch.Tensor):
+    """
+    Encodes masks to an uncompressed RLE, in the format expected by
+    pycoco tools.
+    """
+    # Put in fortran order and flatten h,w
+    b, h, w = tensor.shape
+    tensor = tensor.permute(0, 2, 1).flatten(1)
+
+    # Compute change indices
+    diff = tensor[:, 1:] ^ tensor[:, :-1]
+    change_indices = diff.nonzero()
+
+    # Encode run length
+    out = []
+    for i in range(b):
+        cur_idxs = change_indices[change_indices[:, 0] == i, 1]
+        cur_idxs = torch.cat(
+            [torch.tensor([0], dtype=cur_idxs.dtype, device=cur_idxs.device), cur_idxs + 1,
+             torch.tensor([h * w], dtype=cur_idxs.dtype, device=cur_idxs.device), ]
+        )
+        btw_idxs = cur_idxs[1:] - cur_idxs[:-1]
+        counts = [] if tensor[i, 0] == 0 else [0]
+        counts.extend(btw_idxs.detach().cpu().tolist())
+        out.append({"size": [h, w], "counts": counts})
+
+    return out
+
+def coco_encode_rle(uncompressed_rle):
+    h, w = uncompressed_rle["size"]
+    rle = mask_utils.frPyObjects(uncompressed_rle, h, w)
+    rle["counts"] = rle["counts"].decode("utf-8")  # Necessary to serialize with json
+
+    return rle
+
+if __name__ == '__main__':
+    main()
