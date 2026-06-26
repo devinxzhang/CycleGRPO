@@ -1,4 +1,12 @@
-# CycleGRPO (image-level)
+# Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO
+
+<p align="center">
+  <a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Project Page"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Paper-PDF-red?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Paper"></a> <!-- TODO: PDF link -->
+  <a href="#"><img src="https://img.shields.io/badge/arXiv-b31b1b?style=for-the-badge&logo=arxiv&logoColor=white" alt="arXiv"></a> <!-- TODO: arXiv link -->
+  <a href="#"><img src="https://img.shields.io/badge/HuggingFace-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Models"></a> <!-- TODO: HuggingFace link -->
+  <a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-1a73e8?style=for-the-badge" alt="ECCV 2026"></a>
+</p>
 
 RL fine-tuning for **referring segmentation + region captioning** with a
 **caption ↔ grounding cycle-consistency** reward. The policy is a Qwen3-VL-4B
@@ -7,9 +15,9 @@ an inner grounding rollout conditioned on the model's own caption and scores it
 by mask/temporal IoU — so captions are optimized to be **distinctive and
 locatable**, with no caption ground-truth needed in the RL stage.
 
-> This release covers the **image-level** pipeline only. It is built on
-> [EasyR1](https://github.com/hiyouga/EasyR1) / [veRL](https://github.com/volcengine/verl)
-> (see `README_EasyR1.md` for the underlying framework).
+> Built on [EasyR1](https://github.com/hiyouga/EasyR1) /
+> [veRL](https://github.com/volcengine/verl) (see `README_EasyR1.md` for the
+> underlying framework).
 
 ## Repo layout
 
