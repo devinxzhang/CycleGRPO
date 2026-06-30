@@ -8,6 +8,9 @@
   <a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-1a73e8?style=for-the-badge" alt="ECCV 2026"></a>
 </p>
 
+> **🚧 Work in progress.** This repository is still under active development and
+> is **not** the final/official release.
+
 RL fine-tuning for **referring segmentation + region captioning** with a
 **caption ↔ grounding cycle-consistency** reward. The policy is a Qwen3-VL-4B
 that emits **mask tokens** decoded by a VQ-SAM2 mask tokenizer; the reward runs
