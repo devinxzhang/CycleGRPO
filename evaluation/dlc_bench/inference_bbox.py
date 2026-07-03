@@ -19,7 +19,7 @@ from PIL import Image
 from pycocotools import mask as mask_utils
 from pycocotools.coco import COCO
 from tqdm import tqdm
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 from torchvision.transforms.functional import to_pil_image
 
 TORCH_DTYPE_MAP = dict(fp16=torch.float16, bf16=torch.bfloat16, fp32=torch.float32)
@@ -27,18 +27,18 @@ TORCH_DTYPE_MAP = dict(fp16=torch.float16, bf16=torch.bfloat16, fp32=torch.float
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Inference of vanilla Qwen2.5-VL with BBox on DLC-Bench."
+        description="Inference of vanilla Qwen3-VL with BBox on DLC-Bench."
     )
 
     parser.add_argument(
         "--model_path",
         help="HF model name or path",
-        default="Qwen/Qwen2.5-VL-7B-Instruct",
+        default="Qwen/Qwen3-VL-4B",
     )
     parser.add_argument(
         "--cache_name",
         help="cache name to save model outputs.",
-        default="qwen2.5vl_bbox",
+        default="qwen3vl_bbox",
     )
     parser.add_argument(
         "--data_type",
@@ -50,12 +50,12 @@ def parse_args():
     parser.add_argument(
         "--anno_file",
         help="path to the annotation file.",
-        default="evaluation/DLC-Bench/annotations/annotations.json",
+        default="evaluation/dlc_bench/annotations/annotations.json",
     )
     parser.add_argument(
         "--image_folder",
         help="the folder of images",
-        default="evaluation/DLC-Bench/annotations",
+        default="evaluation/dlc_bench/annotations",
     )
     parser.add_argument(
         "--seed",
@@ -108,8 +108,8 @@ def main():
     data_dtype = TORCH_DTYPE_MAP[args.data_type]
     torch.manual_seed(args.seed)
 
-    # Build Qwen2.5-VL model (vanilla, no VQ-SAM2)
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    # Build Qwen3VL model (vanilla, no VQ-SAM2)
+    model = Qwen3VLForConditionalGeneration.from_pretrained(
         args.model_path, torch_dtype="auto"
     ).cuda().eval()
 
@@ -280,8 +280,8 @@ def main():
             pbar.update(1)
     pbar.close()
 
-    os.makedirs("evaluation/DLC-Bench/model_outputs", exist_ok=True)
-    with open(f"evaluation/DLC-Bench/model_outputs/{cache_name}.json", "w") as file:
+    os.makedirs("evaluation/dlc_bench/model_outputs", exist_ok=True)
+    with open(f"evaluation/dlc_bench/model_outputs/{cache_name}.json", "w") as file:
         json.dump(model_outputs, file, indent=4, ensure_ascii=False)
 
     print(f"Cache name: {cache_name}")

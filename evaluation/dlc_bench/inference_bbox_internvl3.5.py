@@ -63,12 +63,12 @@ def parse_args():
     parser.add_argument(
         "--anno_file",
         help="Path to the annotation file.",
-        default="evaluation/DLC-Bench/annotations/annotations.json",
+        default="evaluation/dlc_bench/annotations/annotations.json",
     )
     parser.add_argument(
         "--image_folder",
         help="The folder of images",
-        default="evaluation/DLC-Bench/annotations",
+        default="evaluation/dlc_bench/annotations",
     )
     parser.add_argument(
         "--seed",
@@ -294,8 +294,8 @@ def main():
 
     pbar.close()
 
-    os.makedirs("evaluation/DLC-Bench/model_outputs", exist_ok=True)
-    out_path = f"evaluation/DLC-Bench/model_outputs/{cache_name}.json"
+    os.makedirs("evaluation/dlc_bench/model_outputs", exist_ok=True)
+    out_path = f"evaluation/dlc_bench/model_outputs/{cache_name}.json"
     with open(out_path, "w") as file:
         json.dump(model_outputs, file, indent=4, ensure_ascii=False)
 

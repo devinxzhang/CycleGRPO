@@ -36,8 +36,12 @@ projects/
   transformers/            # VQ-SAM2 mask tokenizer + SAM2 model code
   vlm/                     # model + eval helpers (refcoco loaders, IoU metrics)
 evaluation/
-  qwen3vl/                 # inference / eval scripts (gres, gcg, groundingsuite, refcoco)
-  DLC-Bench/               # dense-captioning eval scripts
+  gres/                    # referring segmentation (GRES)
+  groundingsuite/          # GroundingSuite grounding
+  gcg/                     # grounded caption generation (GCG)
+  gar/                     # GAR-Bench VQA / detailed caption
+  dlc_bench/               # dense-captioning eval (DLC-Bench)
+  bbox/                    # bbox-format generalization variants
 ```
 
 ## Setup
@@ -61,7 +65,11 @@ The scripts use placeholders you must fill in:
   `prepare_gres_no_target_rl_dataset.py`). A training mix typically combines
   dense-region (denseworld) + no-target (gres) parquets.
 - **`<PATH_TO_COCO2014>`** — COCO2014 `train2014/` images, used only by the
-  refcoco/gres/groundingsuite **eval** scripts.
+  gres/groundingsuite **eval** scripts.
+- **`<PATH_TO_GAR_BENCH>`** — GAR-Bench annotations directory (holds
+  `GAR-Bench-VQA.json` / `GAR-Bench-Caption-Detailed.json` and the `images/`),
+  used by the GAR eval scripts. GAR-Bench is a separate public benchmark — get it
+  from the official Grasp-Any-Region release.
 
 ## Training
 
@@ -87,19 +95,31 @@ verl.trainer.main` command as needed:
 
 ## Inference / evaluation
 
-Image segmentation/grounding evals live in `evaluation/qwen3vl/`. Multi-GPU
-launchers shard the dataset across GPUs and auto-merge:
+Each benchmark lives under `evaluation/<benchmark>/`. The multi-GPU launchers
+shard the dataset across GPUs and auto-merge:
 
 ```bash
 # Referring segmentation (GRES)
-bash evaluation/qwen3vl/run_gres_multigpu.sh        8 <MODEL_PATH> ./results/gres/
+bash evaluation/gres/run_gres_multigpu.sh                     8 <MODEL_PATH> ./results/gres/
 # GroundingSuite
-bash evaluation/qwen3vl/run_groundingsuite_multigpu.sh 8 <MODEL_PATH> ./results/groundingsuite/
+bash evaluation/groundingsuite/run_groundingsuite_multigpu.sh 8 <MODEL_PATH> ./results/groundingsuite/
 # Grounded caption generation (GCG)
-bash evaluation/qwen3vl/run_gcg_multigpu.sh         8 <MODEL_PATH> ./results/gcg/
+bash evaluation/gcg/run_gcg_multigpu.sh                       8 <MODEL_PATH> ./results/gcg/
+
+# GAR-Bench VQA (single-process inference, then metrics)
+python evaluation/gar/qwen3vl_gar_vqa_infer.py <MODEL_PATH> --output results/gar/vqa.json
+python evaluation/gar/gar_vqa_metrics.py results/gar/vqa.json
+
+# DLC-Bench (start the Llama judge server in a separate shell, then infer + eval)
+bash evaluation/dlc_bench/serve_judge.sh
+bash evaluation/dlc_bench/evaluate_dlc.sh <MODEL_PATH> <CACHE_NAME>
+python evaluation/dlc_bench/eval_llama_without_image.py \
+  --pred evaluation/dlc_bench/model_outputs/<CACHE_NAME>.json --base-url http://localhost:8007/v1
 ```
 
-Set the COCO image path (`<PATH_TO_COCO2014>`) inside the eval scripts where noted.
+Fill the dataset placeholders inside the eval scripts where noted:
+`<PATH_TO_COCO2014>` (gres / groundingsuite) and `<PATH_TO_GAR_BENCH>` (gar).
+bbox-format generalization variants live in `evaluation/bbox/`.
 
 ## Acknowledgements
 
