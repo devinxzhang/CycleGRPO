@@ -121,6 +121,53 @@ Fill the dataset placeholders inside the eval scripts where noted:
 `<PATH_TO_COCO2014>` (gres / groundingsuite) and `<PATH_TO_GAR_BENCH>` (gar).
 bbox-format generalization variants live in `evaluation/bbox/`.
 
+## Results
+
+Base **SAMTok** (Qwen3-VL-4B) vs **CycleGRPO** (this work). Two CycleGRPO rows are
+reported: **paper** = the numbers in the ECCV 2026 paper, and **release** = the
+public checkpoint [`XinNUS/CycleGRPO-4B`](https://huggingface.co/XinNUS/CycleGRPO-4B),
+a re-run that varies slightly from the paper (overall on par / marginally higher).
+
+**Region captioning — DLC-Bench** (100 samples):
+
+| Method | Pos. | Neg. | Avg. |
+|---|---:|---:|---:|
+| SAMTok | 43.5 | 80.4 | 61.9 |
+| CycleGRPO (paper) | 51.2 | 84.2 | 67.7 |
+| CycleGRPO (release) | 52.4 | 83.2 | 67.8 |
+
+**Text-to-mask — GroundingSuite** (gIoU, %):
+
+| Method | Stuff | Part | Multi | Single | All |
+|---|---:|---:|---:|---:|---:|
+| SAMTok | 80.9 | 12.4 | 62.0 | 52.9 | 57.5 |
+| CycleGRPO (paper) | 90.7 | 20.9 | 76.3 | 61.6 | 67.6 |
+| CycleGRPO (release) | 90.5 | 21.2 | 78.3 | 62.3 | 68.2 |
+
+**Region VQA — GAR-Bench-VQA** (%):
+
+| Method | Overall | Color | Shape | Texture | Material | Position | Non-Entity | Relation |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| SAMTok | 64.2 | 58.0 | 48.4 | 48.3 | 58.3 | 76.6 | 54.1 | 83.2 |
+| CycleGRPO (paper) | 65.1 | 62.3 | 50.0 | 48.3 | 61.1 | 73.4 | 57.4 | 82.2 |
+| CycleGRPO (release) | 64.9 | 60.9 | 50.0 | 48.3 | 61.1 | 73.4 | 54.1 | 84.2 |
+
+**Interleaved text-mask — GCG** (METEOR / CIDEr / AP50 / mIoU / Recall):
+
+| Method | val M | val C | val AP50 | val mIoU | val Rec | test M | test C | test AP50 | test mIoU | test Rec |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SAMTok | 16.1 | 48.2 | 34.7 | 69.4 | 46.6 | 16.4 | 51.4 | 34.4 | 68.4 | 48.3 |
+| CycleGRPO (paper) | 17.2 | 54.7 | 35.9 | 69.6 | 49.6 | 17.1 | 54.0 | 35.2 | 68.6 | 49.7 |
+| CycleGRPO (release) | 17.3 | 54.3 | 36.8 | 70.2 | 50.2 | 17.2 | 53.7 | 35.0 | 69.2 | 49.8 |
+
+**Referring segmentation + target rejection — GRES** (gIoU / cIoU / N-acc, %):
+
+| Method | Val gIoU | Val cIoU | Val N-acc | TestA gIoU | TestA cIoU | TestA N-acc | TestB gIoU | TestB cIoU | TestB N-acc | Avg gIoU | Avg cIoU | Avg N-acc |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SAMTok | 71.3 | 69.2 | 61.4 | 75.3 | 75.4 | 59.0 | 66.9 | 66.0 | 55.6 | 71.2 | 70.2 | 58.7 |
+| CycleGRPO (paper) | 81.8 | 74.6 | 94.2 | 79.9 | 77.8 | 93.1 | 73.0 | 70.0 | 89.0 | 78.2 | 74.1 | 92.1 |
+| CycleGRPO (release) | 82.2 | 74.8 | 94.7 | 80.3 | 78.2 | 93.0 | 73.5 | 70.2 | 89.9 | 78.7 | 74.4 | 92.5 |
+
 ## Acknowledgements
 
 Built on [EasyR1](https://github.com/hiyouga/EasyR1) and
