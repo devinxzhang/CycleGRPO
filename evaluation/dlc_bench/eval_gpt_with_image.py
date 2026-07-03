@@ -327,13 +327,13 @@ if __name__ == "__main__":
         "--qa",
         type=str,
         help="Path to the reference QA file",
-        default="evaluation/DLC-Bench/annotations/qa.json",
+        default="evaluation/dlc_bench/annotations/qa.json",
     )
     parser.add_argument(
         "--class-names",
         type=str,
         help="Path to the class names JSON file",
-        default="evaluation/DLC-Bench/annotations/class_names.json",
+        default="evaluation/dlc_bench/annotations/class_names.json",
     )
     parser.add_argument(
         "--api-call-limit", type=int, default=1000, help="API call limit"
@@ -347,7 +347,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--csv", action="store_true", help="Output results as CSV only")
     parser.add_argument(
-        "--data-root", type=str, default="evaluation/DLC-Bench/annotations"
+        "--data-root", type=str, default="evaluation/dlc_bench/annotations"
     )
 
     args = parser.parse_args()

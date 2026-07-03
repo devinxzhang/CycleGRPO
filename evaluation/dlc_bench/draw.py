@@ -61,7 +61,7 @@ if __name__ == "__main__":
         "--pred", type=str, help="Path to the prediction JSON file", required=True
     )
     parser.add_argument(
-        "--data-root", type=str, default="evaluation/DLC-Bench/annotations"
+        "--data-root", type=str, default="evaluation/dlc_bench/annotations"
     )
     args = parser.parse_args()
 

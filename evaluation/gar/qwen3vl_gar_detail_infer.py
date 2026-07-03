@@ -99,13 +99,13 @@ def main():
 
     sam2_image_processor = DirectResize(1024)
 
-    with open('../Grasp-Any-Region/evaluation/GAR-Bench/annotations/GAR-Bench-Caption-Detailed.json', 'r') as f:
+    with open('<PATH_TO_GAR_BENCH>/GAR-Bench-Caption-Detailed.json', 'r') as f:
         eval_samples = json.load(f)
     
     all_items = []
     for eval_sample in eval_samples:
         image_file = eval_sample['image']
-        image_path = os.path.join('../Grasp-Any-Region/evaluation/GAR-Bench/annotations/', image_file)
+        image_path = os.path.join('<PATH_TO_GAR_BENCH>/', image_file)
         segm1 = eval_sample['mask_rles'][0]
         segm2 = eval_sample['mask_rles'][1]
         image = Image.open(image_path).convert('RGB')
