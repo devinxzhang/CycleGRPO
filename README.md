@@ -123,7 +123,7 @@ bbox-format generalization variants live in `evaluation/bbox/`.
 
 ## Results
 
-Base **SAMTok** (Qwen3-VL-4B) vs **CycleGRPO** (this work). Two CycleGRPO rows are
+Base **[SAMTok](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok)** (Qwen3-VL-4B) vs **CycleGRPO** (this work). Two CycleGRPO rows are
 reported: **paper** = the numbers in the ECCV 2026 paper, and **release** = the
 public checkpoint [`XinNUS/CycleGRPO-4B`](https://huggingface.co/XinNUS/CycleGRPO-4B),
 a re-run that varies slightly from the paper (overall on par / marginally higher).
