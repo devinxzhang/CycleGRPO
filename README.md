@@ -168,6 +168,19 @@ a re-run that varies slightly from the paper (overall on par / marginally higher
 | CycleGRPO (paper) | 81.8 | 74.6 | 94.2 | 79.9 | 77.8 | 93.1 | 73.0 | 70.0 | 89.0 | 78.2 | 74.1 | 92.1 |
 | CycleGRPO (release) | 82.2 | 74.8 | 94.7 | 80.3 | 78.2 | 93.0 | 73.5 | 70.2 | 89.9 | 78.7 | 74.4 | 92.5 |
 
+## Citation
+
+```bibtex
+@inproceedings{cyclegrpo2026,
+  title     = {Actor as Its Own Critic: Unifying Region Understanding and
+               Localization via CycleGRPO},
+  author    = {Zhang, Xin and Wang, Haochen and Zhou, Yikang and Wang, Zhuochen
+               and Li, Jason and Tan, Robby T.},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2026}
+}
+```
+
 ## Acknowledgements
 
 Built on [EasyR1](https://github.com/hiyouga/EasyR1) and
