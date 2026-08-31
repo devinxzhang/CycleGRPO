@@ -74,13 +74,22 @@ def main():
         help="Output directory for parquet file"
     )
     parser.add_argument(
+        "--output_path",
+        type=str,
+        default=None,
+        help="Exact output parquet path (overrides --output_dir)."
+    )
+    parser.add_argument(
         "--filter_by_color",
         action="store_true",
         help="If set, only keep samples that mention colors"
     )
     args = parser.parse_args()
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    if args.output_path:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output_path)), exist_ok=True)
+    else:
+        os.makedirs(args.output_dir, exist_ok=True)
 
     print(f"Loading JSON from: {args.input_json}")
     with open(args.input_json, 'r') as f:
@@ -151,10 +160,10 @@ def main():
     
     # Save to parquet
     output_filename = f"gres_no_target_{len(processed_items)}_samples_train.parquet"
-    output_path = os.path.join(args.output_dir, output_filename)
+    output_path = args.output_path or os.path.join(args.output_dir, output_filename)
     trainset.to_parquet(output_path)
     print(f"Saved to: {output_path}")
 
 
 if __name__ == "__main__":
-    main()    
+    main()

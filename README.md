@@ -8,14 +8,13 @@
   <a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-1a73e8?style=for-the-badge" alt="ECCV 2026"></a>
 </p>
 
-> **🚧 Work in progress.** This repository is still under active development and
-> is **not** the final/official release.
-
-RL fine-tuning for **referring segmentation + region captioning** with a
+Official implementation of **CycleGRPO** for jointly improving region
+captioning and referring localization with multimodal reinforcement learning.
+CycleGRPO uses a
 **caption ↔ grounding cycle-consistency** reward. The policy is a Qwen3-VL-4B
 that emits **mask tokens** decoded by a VQ-SAM2 mask tokenizer; the reward runs
 an inner grounding rollout conditioned on the model's own caption and scores it
-by mask/temporal IoU — so captions are optimized to be **distinctive and
+by mask IoU — so captions are optimized to be **distinctive and
 locatable**, with no caption ground-truth needed in the RL stage.
 
 > Built on [EasyR1](https://github.com/hiyouga/EasyR1) /
@@ -55,12 +54,12 @@ Requires CUDA GPUs, PyTorch, and vLLM (SPMD mode). See `requirements.txt`.
 
 ## Data & checkpoints
 
-The scripts use placeholders you must fill in:
+Configure the public training launcher with the following paths:
 
-- **`<PATH_TO_COLD_START_CKPT>`** — the cold-start (co-SFT) Qwen3-VL-4B + mask-token
-  checkpoint that RL starts from. (Train it with SFT first, or download the
-  released checkpoint — see project page.)
-- **`<PATH_TO_DATA>`** — directory holding the RL `*.parquet` files. Build them
+- **`MODEL_PATH`** — the cold-start (co-SFT) Qwen3-VL-4B + mask-token
+  checkpoint that RL starts from. The public initialization is
+  [`zhouyik/Qwen3-VL-4B-SAMTok-co`](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co).
+- **`DATA_DIR`** — directory holding the RL `*.parquet` files. Build them
   with the scripts in `projects/rl/datasets/` (e.g. `prepare_dw_rl_dataset.py`,
   `prepare_gres_no_target_rl_dataset.py`). A training mix typically combines
   dense-region (denseworld) + no-target (gres) parquets.
@@ -73,13 +72,21 @@ The scripts use placeholders you must fill in:
 
 ## Training
 
+Download the public co-SFT initialization, prepare the three parquet files
+described in [`TRAIN.md`](TRAIN.md), and launch:
+
 ```bash
+hf download zhouyik/Qwen3-VL-4B-SAMTok-co \
+  --local-dir checkpoints/Qwen3-VL-4B-SAMTok-co
+
+MODEL_PATH=checkpoints/Qwen3-VL-4B-SAMTok-co \
+DATA_DIR=data/cyclegrpo \
 bash projects/rl/qwen3vl_4b_mt.sh
 ```
 
-Edit the script first: set `MODEL_PATH`, `data.train_files`, `data.val_files`.
-Defaults assume 1 node × 8 GPUs. `WANDB_API_KEY` is read from the environment
-(defaults to empty / offline).
+Defaults assume 1 node × 8 GPUs. The launcher reads paths from environment
+variables and checks all required parquet and SAMTok weight files before
+starting. `WANDB_API_KEY` is optional and `WANDB_MODE` defaults to `offline`.
 
 ### Memory tuning (multi-image / OOM)
 
@@ -175,7 +182,7 @@ a re-run that varies slightly from the paper (overall on par / marginally higher
   title     = {Actor as Its Own Critic: Unifying Region Understanding and
                Localization via CycleGRPO},
   author    = {Zhang, Xin and Wang, Haochen and Zhou, Yikang and Wang, Zhuochen
-               and Li, Jason and Tan, Robby T.},
+               and Li, Xiangtai and Tan, Robby T.},
   booktitle = {European Conference on Computer Vision (ECCV)},
   year      = {2026}
 }

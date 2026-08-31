@@ -1,27 +1,47 @@
 #!/bin/bash
 # CycleGRPO — image-level RL training (Qwen3-VL-4B + mask-token / SAM2).
 # Caption<->grounding cycle-consistency reward. See README for data / cold-start
-# checkpoint setup. Replace the <PATH_TO_*> placeholders before running.
+# checkpoint setup. Paths are configured through environment variables.
 
+set -euo pipefail
 set -x
 export WANDB_API_KEY="${WANDB_API_KEY:-}"
-export WANDB_MODE=offline
-export WANDB_DIR='./verl_wandb_logs'
+export WANDB_MODE="${WANDB_MODE:-offline}"
+export WANDB_DIR="${WANDB_DIR:-./verl_wandb_logs}"
 
 export MODELSCOPE_CACHE='./modelscope_cache/shared'
 export HF_DATASETS_CACHE='./hf_dataset_cache'
 
-# Cold-start (co-SFT) checkpoint that RL starts from. See README for how to obtain it.
-MODEL_PATH="<PATH_TO_COLD_START_CKPT>"
+# Download zhouyik/Qwen3-VL-4B-SAMTok-co locally first (see README/TRAIN.md).
+# That snapshot contains the co-SFT model and both SAMTok weight files.
+MODEL_PATH="${MODEL_PATH:-./checkpoints/Qwen3-VL-4B-SAMTok-co}"
+DATA_DIR="${DATA_DIR:-./data/cyclegrpo}"
+MASK_TOKENIZER_PATH="${MASK_TOKENIZER_PATH:-${MODEL_PATH}/mask_tokenizer_256x2.pth}"
+SAM2_PATH="${SAM2_PATH:-${MODEL_PATH}/sam2.1_hiera_large.pt}"
+
+for path in \
+    "${DATA_DIR}/denseworld_train.parquet" \
+    "${DATA_DIR}/gres_no_target_train.parquet" \
+    "${DATA_DIR}/val.parquet" \
+    "${MASK_TOKENIZER_PATH}" \
+    "${SAM2_PATH}"; do
+    if [[ ! -f "${path}" ]]; then
+        echo "Missing required file: ${path}" >&2
+        echo "See TRAIN.md for checkpoint and dataset setup." >&2
+        exit 1
+    fi
+done
 
 python3 -m verl.trainer.main \
     config=projects/rl/config.yaml \
-    data.train_files="['<PATH_TO_DATA>/denseworld_train.parquet', '<PATH_TO_DATA>/gres_no_target_train.parquet']" \
-    data.val_files="['<PATH_TO_DATA>/val.parquet']" \
+    data.train_files="['${DATA_DIR}/denseworld_train.parquet', '${DATA_DIR}/gres_no_target_train.parquet']" \
+    data.val_files="['${DATA_DIR}/val.parquet']" \
     data.format_prompt=./projects/rl/format_prompt/non_thinking.jinja \
     data.region_format=mask_token \
     worker.actor.model.freeze_vision_tower=true \
     worker.actor.model.model_path=${MODEL_PATH} \
+    worker.reward.mask_tokenizer_path=${MASK_TOKENIZER_PATH} \
+    worker.reward.sam2_pretrained_weight=${SAM2_PATH} \
     worker.actor.optimize_captioner=true \
     worker.actor.optimize_segmenter=true \
     worker.rollout.n=8 \
