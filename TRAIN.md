@@ -1,41 +1,78 @@
-## SINGLE NODE
+# Spatial CycleGRPO training
+
+This repository releases the spatial CycleGRPO training path used for region
+captioning and referring localization. Commands below assume one node with
+eight CUDA GPUs.
+
+## 1. Install
+
+```bash
+git clone https://github.com/devinxzhang/CycleGRPO.git
+cd CycleGRPO
+pip install -r requirements.txt
+pip install -e .
 ```
-cd <PATH_TO_DATA>/MaskTokenizer
-source source /path/to/miniconda3/bin/activate
-conda activate yk-qwen25vl-sft
-bash projects/swift/sft_qwen3vl_4b_mask.sh
+
+## 2. Download the co-SFT initialization
+
+The public co-SFT snapshot contains the Qwen3-VL-4B model, SAMTok tokenizer,
+and SAM2 weights required by the cycle reward:
+
+```bash
+hf download zhouyik/Qwen3-VL-4B-SAMTok-co \
+  --local-dir checkpoints/Qwen3-VL-4B-SAMTok-co
 ```
 
-## MULTI NODE
+## 3. Prepare RL data
+
+Use the converters in `projects/rl/datasets/` to build the DenseWorld cycle
+data and GRES no-target data:
+
+```bash
+python projects/rl/datasets/prepare_dw_rl_dataset.py \
+  --input_json /path/to/denseworld_mask_annotations.json \
+  --vq_sam2_path checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth \
+  --sam2_path checkpoints/Qwen3-VL-4B-SAMTok-co/sam2.1_hiera_large.pt \
+  --output_path data/cyclegrpo/denseworld_train.parquet \
+  --crop_dir data/cyclegrpo/denseworld_crops
+
+python projects/rl/datasets/prepare_gres_no_target_rl_dataset.py \
+  --input_json /path/to/gres_no_target_annotations.json \
+  --output_path data/cyclegrpo/gres_no_target_train.parquet
 ```
-# add the requirement env
-sudo apt-get install ffmpeg libsm6 libxext6 tmux htop  -y
 
-# export http_proxy=proxy.example.invalid:3128  https_proxy=proxy.example.invalid:3128  no_proxy=code.example.invalid 
+Provide a held-out validation parquet as well. The launcher expects:
 
-export http_proxy=http://proxy.example.invalid:8118 https_proxy=http://proxy.example.invalid:8118 no_proxy=.example.invalid
-
-
-# 设定分布式训练的参数
-IFS=',' read -ra ADDR <<< "$ARNOLD_WORKER_HOSTS"
-IFS=':' read -ra ADDR <<< "${ADDR[0]}"  # Split the IP Address and Port
-export MASTER_ADDR=${ADDR[0]}
-export MASTER_PORT=${ADDR[1]}
-export NUM_NODE=${ARNOLD_WORKER_NUM}
-export NODE_RANK=${ARNOLD_ID}
-# 找到空闲端口并运行
-HOSTS=$ARNOLD_WORKER_HOSTS
-HOST=(${HOSTS//,/ })
-HOST_SPLIT=(${HOST//:/ })
-PORT=${HOST_SPLIT[-1]}
-N_PROCESS=$ARNOLD_WORKER_GPU
-N_NODE=$ARNOLD_WORKER_NUM
-TOTAL_GPUS=$((N_PROCESS * N_NODE))
-
-
-cd <PATH_TO_DATA>/MaskTokenizer
-source source /path/to/miniconda3/bin/activate
-conda activate yk-qwen25vl-sft
-
-NODE_RANK=$ARNOLD_ID NNODES=$N_NODE MASTER_ADDR=$ARNOLD_WORKER_0_HOST MASTER_PORT=$PORT bash projects/swift/sft_qwen3vl_4b_mask.sh
+```text
+data/cyclegrpo/
+  denseworld_train.parquet
+  gres_no_target_train.parquet
+  val.parquet
 ```
+
+The RL stage consumes region masks but does not require reference captions for
+the DenseWorld cycle samples. Dataset images remain in their original public
+dataset locations; the parquet files store the paths expected by the loaders.
+
+## 4. Launch
+
+```bash
+MODEL_PATH=checkpoints/Qwen3-VL-4B-SAMTok-co \
+DATA_DIR=data/cyclegrpo \
+WANDB_MODE=offline \
+bash projects/rl/qwen3vl_4b_mt.sh
+```
+
+Optional overrides:
+
+```bash
+MASK_TOKENIZER_PATH=/path/to/mask_tokenizer_256x2.pth \
+SAM2_PATH=/path/to/sam2.1_hiera_large.pt \
+MODEL_PATH=/path/to/co_sft_checkpoint \
+DATA_DIR=/path/to/parquets \
+bash projects/rl/qwen3vl_4b_mt.sh
+```
+
+The launcher validates all required data and reward-model weight files before
+starting Ray. Memory-related overrides are documented at the bottom of
+`projects/rl/qwen3vl_4b_mt.sh`.

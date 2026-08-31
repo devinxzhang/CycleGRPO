@@ -305,11 +305,29 @@ def concat_side_by_side(img_left, img_right):
     return new_img
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='RefCocoSeg')
+    parser = argparse.ArgumentParser(description='Prepare DenseWorld spatial CycleGRPO data')
+    parser.add_argument(
+        '--input_json',
+        required=True,
+        help='DenseWorld JSON containing image paths and mask-token annotations.')
     parser.add_argument(
         '--vq_sam2_path',
-        default="Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth",
+        required=True,
         help='vq-sam2 model path.')
+    parser.add_argument(
+        '--sam2_path',
+        required=True,
+        help='SAM2.1 Hiera-L checkpoint path.')
+    parser.add_argument(
+        '--output_path',
+        default='./data/cyclegrpo/denseworld_train.parquet',
+        help='Output parquet path.')
+    parser.add_argument(
+        '--crop_dir',
+        default='./data/cyclegrpo/denseworld_crops',
+        help='Directory for generated zoom-in crops.')
+    parser.add_argument('--start', type=int, default=None, help='Optional first input index.')
+    parser.add_argument('--end', type=int, default=None, help='Optional exclusive last input index.')
     parser.add_argument(
         '--num_workers',
         type=int,
@@ -371,7 +389,7 @@ def main():
     with hydra.initialize(version_base=None, config_path="../../../projects/transformers/vq_sam2/sam2/sam2_configs"):
         sam2_config = SAM2Config(
             cfg_path="sam2.1_hiera_l.yaml",
-            ckpt_path="Qwen/sam2.1_hiera_large.pt",
+            ckpt_path=args.sam2_path,
         )
         
         vq_sam2_config = VQ_SAM2Config(
@@ -389,12 +407,12 @@ def main():
     print("VQ-SAM2 model loaded successfully")
 
     # 读取 denseworld 数据集
-    denseworld_path = "./data/tokenmask_data_256x2_cot_format/mask_generation_denseworld872k_clean_repeat_pattern.json"
+    denseworld_path = args.input_json
     print(f"Loading dataset from: {denseworld_path}")
     with open(denseworld_path, 'r') as f:
         denseworld_data = json.load(f)
     
-    denseworld_data = denseworld_data[15000:20000]  # 仅用于测试，实际使用时注释掉
+    denseworld_data = denseworld_data[args.start:args.end]
     print(f"Total samples: {len(denseworld_data)}")
     
     # 处理全部样本 872485
@@ -426,7 +444,7 @@ def main():
     print("Step 2: Processing images and generating samples (streaming)...")
     data_list = []
     small_object_count = 0
-    crop_save_dir = "rl_dataset/denseworld_5k_crops_multiple"
+    crop_save_dir = args.crop_dir
     os.makedirs(crop_save_dir, exist_ok=True)
     crops_to_save = []  # [(save_path, image), ...]
 
@@ -630,14 +648,10 @@ def main():
     
     # 保存为 parquet 文件（全量样本）
     trainset = Dataset.from_list(data_list)
-    num_images_k = len(all_samples) // 1000
-    num_samples = len(data_list)
-    output_path = f"rl_dataset/denseworld_{num_images_k}k_img_{num_samples}_samples_train.parquet"
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_path = args.output_path
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     trainset.to_parquet(output_path)
     print(f"Saved to {output_path}")
 
 if __name__ == "__main__":
     main()
-
-    

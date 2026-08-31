@@ -3,11 +3,8 @@ from typing import Any, Tuple, Optional
 import torch
 import torch.nn.functional as F
 import json
-import hydra
-import requests
 import os
 import random
-from openai import OpenAI
 import numpy as np
 from PIL import Image
 from collections import Counter
@@ -17,16 +14,6 @@ from torchvision.transforms.functional import to_pil_image
 from projects.transformers.vq_sam2 import SAM2Config, VQ_SAM2Config, VQ_SAM2
 
 _MODEL_CACHE = {'vq_sam2': None, 'sam2_image_processor': None}
-
-from projects.rl.reward_function.llm_judge_reward import (
-    init_judge_clients,
-    compute_caption_judge_rewards_batch,
-)
-
-# 模块加载时初始化一次。从 env vars 读 endpoint:
-#   export LLM_AS_A_JUDGE_BASES="http://<LLM_JUDGE_HOST>:<PORT>/v1"
-#   export LLM_AS_A_JUDGE_MODEL="qwen-judge"
-init_judge_clients()
 
 # openai_api_key = "REMOVED_CREDENTIAL"
 # openai_api_base_list = [
@@ -1043,6 +1030,14 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
             if ri["source"] in ("dam_captioning", "tg_captioning")
         ]
         if judge_caption_indices:
+            # Optional external-judge baselines are imported lazily. The
+            # released spatial CycleGRPO path never initializes or calls an
+            # external reward model.
+            from projects.rl.reward_function.llm_judge_reward import (
+                compute_caption_judge_rewards_batch,
+                init_judge_clients,
+            )
+            init_judge_clients()
             judge_rewards = compute_caption_judge_rewards_batch(
                 responses=[reward_inputs[i]["response"]         for i in judge_caption_indices],
                 gts      =[reward_inputs[i]["cap_ground_truth"] for i in judge_caption_indices],
