@@ -35,13 +35,14 @@ from PIL import Image
 from pycocotools.coco import COCO
 from tqdm import tqdm
 
-# Define Azure OpenAI details
-model_name = "gpt-4o-2024-11-20"
+# Define Azure OpenAI details. Credentials and endpoints must be supplied by
+# the user; never commit them to the repository.
+model_name = os.environ.get("AZURE_OPENAI_MODEL", "gpt-4o-2024-11-20")
 max_tokens = 1000  # range: [1, 4095]
 
-base_url = "https://example.invalid/azure-openai"
-api_version = "2024-03-01-preview"
-ak = "REMOVED_CREDENTIAL"
+base_url = os.environ["AZURE_OPENAI_ENDPOINT"]
+api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-03-01-preview")
+ak = os.environ["AZURE_OPENAI_API_KEY"]
 
 # Initialize the Azure client
 client = openai.AzureOpenAI(

@@ -2,6 +2,7 @@ from mmengine.hooks import (CheckpointHook, DistSamplerSeedHook, IterTimerHook,
                             LoggerHook, ParamSchedulerHook)
 from mmengine.optim import AmpOptimWrapper, CosineAnnealingLR, LinearLR
 from torch.optim import AdamW
+import os
 
 from xtuner.dataset import ConcatDataset
 from xtuner.dataset.samplers import LengthGroupedSampler
@@ -17,7 +18,7 @@ from projects.vlm.vq_sam2.datasets import vq_sam2_collate_fn
 #                          PART 1  Settings                           #
 #######################################################################
 sam2_path = "pretrained_weights/sam2.1_hiera_large.pt"
-pretrained_pth = 'data/sam_vae_work_dors/vq_sam2_2Msam_0723/iter_44916.pth'
+pretrained_pth = os.environ.get("VQ_SAM2_PRETRAINED", "pretrained_weights/vq_sam2.pth")
 
 # Scheduler & Optimizer
 batch_size = 16  # per_device
@@ -76,8 +77,8 @@ sam2_image_processor = dict(
     target_length=1024,
 )
 
-DATA_ROOT = 'data/sam_datas/'
-sam_info_json = "data/sam_infos.json"
+DATA_ROOT = os.environ.get("SAM_DATA_ROOT", "data/sam")
+sam_info_json = os.environ.get("SAM_INFO_JSON", "data/sam_infos.json")
 
 sa1b_single_dataset = dict(
     type=SA1BDataset,

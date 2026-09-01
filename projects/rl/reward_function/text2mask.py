@@ -15,7 +15,7 @@ from projects.transformers.vq_sam2 import SAM2Config, VQ_SAM2Config, VQ_SAM2
 
 _MODEL_CACHE = {'vq_sam2': None, 'sam2_image_processor': None}
 
-# openai_api_key = "REMOVED_CREDENTIAL"
+# openai_api_key = os.environ["LLM_AS_A_JUDGE_KEY"]
 # openai_api_base_list = [
 #     os.environ.get("LLM_AS_A_JUDGE_BASE", "http://<LLM_JUDGE_HOST>:<PORT>/v1"),
 # ]
