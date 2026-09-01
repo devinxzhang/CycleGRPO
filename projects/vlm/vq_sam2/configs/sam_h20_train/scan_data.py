@@ -2,7 +2,8 @@ import os
 import json
 import tqdm
 
-sam_folder = "data/sam_datas/"
+sam_folder = os.environ.get("SAM_DATA_ROOT", "data/sam")
+sam_info_json = os.environ.get("SAM_INFO_JSON", "data/sam_infos.json")
 
 ret = []
 print("Listing the folder !!!")
@@ -13,5 +14,5 @@ for file_name in tqdm.tqdm(files):
         continue
     ret.append({'image_file': file_name.replace(".json", ".jpg"), 'json_file': file_name})
 
-with open("data/sam_infos.json", "w") as f:
+with open(sam_info_json, "w") as f:
     json.dump(ret, f)

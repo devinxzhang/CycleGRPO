@@ -2,6 +2,7 @@ from mmengine.hooks import (CheckpointHook, DistSamplerSeedHook, IterTimerHook,
                             LoggerHook, ParamSchedulerHook)
 from mmengine.optim import AmpOptimWrapper, CosineAnnealingLR, LinearLR
 from torch.optim import AdamW
+import os
 
 from xtuner.dataset import ConcatDataset
 from xtuner.dataset.samplers import LengthGroupedSampler
@@ -76,8 +77,8 @@ sam2_image_processor = dict(
     target_length=1024,
 )
 
-DATA_ROOT = 'data/sam_datas/'
-sam_info_json = "data/sam_infos.json"
+DATA_ROOT = os.environ.get("SAM_DATA_ROOT", "data/sam")
+sam_info_json = os.environ.get("SAM_INFO_JSON", "data/sam_infos.json")
 
 sa1b_single_dataset = dict(
     type=SA1BDataset,
