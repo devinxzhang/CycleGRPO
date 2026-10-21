@@ -1,0 +1,56 @@
+data:
+  cap_prompt_key: cap_problem
+  cap_answer_key: cap_answer
+  seg_prompt_key: seg_problem
+  seg_answer_key: seg_answer
+  image_key: images
+  video_key: videos
+  format_prompt: ./projects/rl/format_prompt/non_thinking.jinja
+  seed: 1
+  shuffle: true
+  filter_overlong_prompts: true
+algorithm:
+  adv_estimator: grpo
+  use_kl_loss: true
+  kl_coef: 0.01
+worker:
+  actor:
+    padding_free: true
+    dynamic_batching: false
+    optimize_captioner: true
+    optimize_segmenter: true
+    micro_batch_size_per_device_for_update: 1
+    micro_batch_size_per_device_for_experience: 1
+    model:
+      enable_gradient_checkpointing: true
+      trust_remote_code: true
+      freeze_vision_tower: true
+    optim:
+      lr: 1.0e-6
+      weight_decay: 0.01
+      lr_scheduler_type: cosine
+    offload:
+      offload_params: false
+      offload_optimizer: false
+  rollout:
+    temperature: 1.0
+    tensor_parallel_size: 1
+    limit_images: 40
+    gpu_memory_utilization: 0.6
+    reset_mm_processor_cache_before_generate: true
+  reward:
+    reward_type: batch
+    reward_function: ./generalized/reward_function/text2mask.py:compute_score
+    skip_special_tokens: false
+trainer:
+  project_name: generalized_cyclegrpo
+  total_epochs: 1
+  val_freq: -1
+  val_before_train: false
+  logger: [file]
+  save_freq: 5
+  save_limit: 1
+  auto_merge_hf_checkpoint: true
+  merged_save_limit: -1
+  find_last_checkpoint: false
+  max_try_make_batch: 128

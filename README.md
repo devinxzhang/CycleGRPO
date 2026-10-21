@@ -1,4 +1,4 @@
-# Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO
+# CycleGRPO and Generalized CycleGRPO
 
 <p align="center">
   <a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Project Page"></a>
@@ -7,6 +7,25 @@
   <a href="https://huggingface.co/XinNUS/CycleGRPO-4B"><img src="https://img.shields.io/badge/HuggingFace-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Models"></a>
   <a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-1a73e8?style=for-the-badge" alt="ECCV 2026"></a>
 </p>
+
+## Generalized CycleGRPO: images and videos
+
+The video extension, **Generalized CycleGRPO for Fine-Grained Multimodal
+Understanding and Grounding**, adds temporal intervals and spatio-temporal
+timestamped regions to the region--text--region cycle.
+
+- [Generalized project page](https://devinxzhang.github.io/Generalized-CycleGRPO-Page/)
+- [Video training, data preparation, and checkpoint instructions](generalized/README.md)
+- Training entry: `bash generalized/train.sh temporal_qwen`,
+  `temporal_omtg`, or `openo3_mixed`, with the corresponding model/data paths.
+
+The existing image release and commands below remain unchanged. The linked
+Hugging Face model is the ECCV **spatial** checkpoint; video checkpoint
+locations must be supplied separately and are not uploaded by this release.
+
+## ECCV 2026 spatial CycleGRPO
+
+**Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO**
 
 Official implementation of **CycleGRPO** for jointly improving region
 captioning and referring localization with multimodal reinforcement learning.
