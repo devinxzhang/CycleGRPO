@@ -23,10 +23,19 @@ initialization. The inverse description interface is learned during co-SFT.
 Do not start RL from the final CycleGRPO checkpoint unless deliberately
 continuing that run.
 
-The existing `XinNUS/CycleGRPO-4B` model link is the **ECCV image model**, not
-one of these temporal/video models. This code update does not upload video
-weights or the curated training artifacts. Users must supply those artifacts;
-the private experiment filesystem is not a public download location.
+The existing `XinNUS/CycleGRPO-4B` model link is the **ECCV image model**.
+The separate video inference models are:
+
+- [Temporal: Qwen route](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B),
+  used for the main DOVE result and the Qwen-initialized TimeLens comparison.
+- [Temporal: OMTG route](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B),
+  used for the OMTG-initialized TimeLens comparison.
+- [Spatio-temporal: Open-o3 route](https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B),
+  used for the main V-STaR and general-video comparisons.
+
+These are inference releases, not the co-SFT models that start RL. Curated
+training artifacts and the corresponding co-SFT initializations must be
+provided separately. No private experiment filesystem is a download endpoint.
 
 ## Environment
 

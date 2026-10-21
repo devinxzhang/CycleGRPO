@@ -19,9 +19,17 @@ timestamped regions to the region--text--region cycle.
 - Training entry: `bash generalized/train.sh temporal_qwen`,
   `temporal_omtg`, or `openo3_mixed`, with the corresponding model/data paths.
 
-The existing image release and commands below remain unchanged. The linked
-Hugging Face model is the ECCV **spatial** checkpoint; video checkpoint
-locations must be supplied separately and are not uploaded by this release.
+The existing image release and commands below remain unchanged. The Models
+badge above links to the ECCV **spatial** model. The video releases are:
+
+| Model | Hugging Face |
+|---|---|
+| Temporal: Qwen route, captioning and grounding | [Generalized-CycleGRPO-Temporal-4B](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B) |
+| Temporal: OMTG route, grounding | [Generalized-CycleGRPO-Temporal-OMTG-4B](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B) |
+| Spatio-temporal: Open-o3 route | [Generalized-CycleGRPO-SpatioTemporal-4B](https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B) |
+
+These are final inference models. Training uses the corresponding co-SFT
+initialization described in the video documentation, not these final models.
 
 ## ECCV 2026 spatial CycleGRPO
 

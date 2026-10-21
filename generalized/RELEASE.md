@@ -21,9 +21,10 @@ local checkpoint/data inventories. No GPU optimization step was executed
 as part of this packaging update.
 
 Checkpoint inventory/header checks were performed privately against the
-three retained paper models: Qwen temporal step 40, OMTG temporal step 30,
-and Open-o3 spatio-temporal step 30. These checks do not upload the models,
-republish private paths, or re-run the benchmark scores.
+three retained paper models: the Qwen-initialized temporal model, the
+OMTG-initialized temporal model, and the Open-o3-initialized spatio-temporal
+model. Public model names identify their capabilities, not internal training
+identifiers. The checks do not republish private paths or re-run benchmarks.
 
 All newly released files were checked for credential patterns, internal
 service addresses, and private filesystem paths. Original third-party
