@@ -1,0 +1,35 @@
+# Install into a separate CUDA environment; do not combine with the old
+# root requirements.txt, whose Transformers upper bound predates Qwen3-VL.
+# Match torch/torchvision/flash-attn to the CUDA environment before installing.
+accelerate
+codetiming
+datasets
+decord
+einops
+hydra-core
+liger-kernel
+mathruler
+nltk
+numpy
+omegaconf
+openai
+packaging
+pandas
+peft
+pillow
+psutil
+pyarrow>=15.0.0
+pycocoevalcap
+pycocotools
+pylatexenc
+pytest
+pyyaml
+qwen-vl-utils
+ray[default]
+safetensors
+scipy
+tensordict
+torchdata
+transformers>=4.57.1,<4.58
+vllm>=0.11,<0.12
+wandb

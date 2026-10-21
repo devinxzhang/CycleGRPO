@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.venv/
+checkpoints/
+results/
+data/
+rl_dataset/
+wandb/
+verl_wandb_logs/
