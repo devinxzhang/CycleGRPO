@@ -240,6 +240,12 @@ class RayPPOTrainer:
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.config = config
+        if config.trainer.val_before_train or config.trainer.val_freq > 0 or config.trainer.val_only:
+            raise NotImplementedError(
+                "CycleGRPO validation still expects legacy single-task fields and cannot score "
+                "caption/segmentation cycle batches. Set trainer.val_before_train=false, "
+                "trainer.val_freq=-1, and trainer.val_only=false until cycle-aware validation is implemented."
+            )
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
 
@@ -546,11 +552,19 @@ class RayPPOTrainer:
                 "video_fps": self.config.data.video_fps,
             }
 
-            DW_SOURCES = ['denseworld_single', 'denseworld_multiple', 'tg_multi_merged', 'dam_cyclegrpo', None]
+            DW_SOURCES = ['groundingme', 'denseworld_single', 'denseworld_multiple', 'tg_multi_merged', 'dam_cyclegrpo', None]
             new_batch: DataProto = DataProto.from_single_dict(batch_dict, meta_info=meta_info)
             new_batch.non_tensor_batch["uid"] = np.array(
                 [str(uuid.uuid4()) for _ in range(len(new_batch.batch))], dtype=object
             )
+            if self.config.algorithm.adv_estimator == "remax" or self.config.algorithm.online_filtering:
+                cycle_sources = sorted({str(source) for source in new_batch.non_tensor_batch["source"]
+                                        if source in DW_SOURCES})
+                if cycle_sources:
+                    raise ValueError(
+                        f"ReMax/online filtering cannot directly score cycle sources {cycle_sources}; "
+                        "their caption reward requires an inner grounding rollout."
+                    )
 
             # prepare gen_batch for generation of captioning / segmentation training
             task_dict = {
@@ -580,7 +594,9 @@ class RayPPOTrainer:
                 gen_baseline_output = self.actor_rollout_ref_wg.generate_sequences(gen_baseline_batch)
 
                 new_batch = new_batch.union(gen_baseline_output)
-                reward_baseline_tensor, _ = ray.get(self.reward_fn.compute_reward.remote(new_batch))
+                reward_baseline_tensor, _ = ray.get(
+                    self.reward_fn.compute_reward.remote(self.global_step, new_batch, task='caption')
+                )
                 reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
                 new_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
@@ -593,12 +609,19 @@ class RayPPOTrainer:
 
             # filter group
             if self.config.algorithm.online_filtering:
-                reward_tensor, reward_metrics = ray.get(self.reward_fn.compute_reward.remote(new_batch))
+                reward_tensor, reward_metrics = ray.get(
+                    self.reward_fn.compute_reward.remote(self.global_step, new_batch, task='caption')
+                )
                 new_batch.batch["token_level_scores"] = reward_tensor
                 for k, v in reward_metrics.items():
                     all_metrics[k].extend(v)
 
-                filter_scores = reward_metrics[self.config.algorithm.filter_key]
+                filter_key = self.config.algorithm.filter_key
+                if filter_key == "overall" and "cap_overall" in reward_metrics:
+                    filter_key = "cap_overall"
+                if filter_key not in reward_metrics:
+                    raise ValueError(f"Unknown online filter metric {filter_key!r}; available: {sorted(reward_metrics)}")
+                filter_scores = reward_metrics[filter_key]
                 uids = new_batch.non_tensor_batch["uid"]
                 uid2scores = defaultdict(list)
                 for uid, score in zip(uids, filter_scores):
@@ -1134,8 +1157,19 @@ class RayPPOTrainer:
             self.logger.log(data=metrics, step=self.global_step)
             main_tqdm.update()
 
-        # perform validation after training
-        if self.val_reward_fn is not None:
+        # Save the final training state before running optional validation, so
+        # a validation failure cannot discard the last optimization steps.
+        if self.config.trainer.save_freq <= 0 or self.global_step % self.config.trainer.save_freq != 0:
+            self._save_checkpoint()
+
+        # A negative val_freq and val_before_train=False disable validation.
+        # The reward actor may exist even when validation is disabled.
+        validation_enabled = (
+            self.config.trainer.val_before_train
+            or self.config.trainer.val_freq > 0
+            or self.config.trainer.val_only
+        )
+        if self.val_reward_fn is not None and validation_enabled:
             if (
                 val_metrics is None
                 or self.config.trainer.val_freq <= 0
@@ -1145,6 +1179,3 @@ class RayPPOTrainer:
                 self.logger.log(data=val_metrics, step=self.global_step)
 
             print(f"Final validation metrics:\n{convert_dict_to_str(unflatten_dict(val_metrics))}")
-
-        if self.config.trainer.save_freq <= 0 or self.global_step % self.config.trainer.save_freq != 0:
-            self._save_checkpoint()

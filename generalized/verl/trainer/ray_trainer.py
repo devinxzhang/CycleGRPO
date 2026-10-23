@@ -681,6 +681,28 @@ class RayPPOTrainer:
         samples = samples[: self.config.trainer.val_generations_to_log]
         self.logger.log_generation(samples, self.global_step)
 
+    def _check_direct_caption_reward_sources(self, batch: DataProto, operation: str) -> None:
+        """Reject rows whose caption reward needs the inner grounding rollout."""
+        sources = batch.non_tensor_batch.get("source", [])
+        unsupported = sorted(
+            {str(source) for source in sources if source in NESTED_CYCLE_SOURCES or source == "groundingme"}
+        )
+        if unsupported:
+            raise ValueError(
+                f"{operation} cannot score source(s) {unsupported} from a caption rollout alone; "
+                "their reward requires IoU from the inner grounding rollout."
+            )
+
+    def _compute_reward_ref(self, batch: DataProto, task: str, *, validation: bool = False):
+        reward_manager = self.val_reward_fn if validation else self.reward_fn
+        if self.config.worker.reward.reward_type == "batch":
+            return reward_manager.compute_reward.remote(self.global_step, batch, task=task)
+        # Sequential reward functions use the generic ground_truth field.
+        ground_truth_key = "cap_ground_truth" if task == "caption" else "seg_ground_truth"
+        if ground_truth_key in batch.non_tensor_batch:
+            batch.non_tensor_batch["ground_truth"] = batch.non_tensor_batch[ground_truth_key]
+        return reward_manager.compute_reward.remote(batch)
+
     def _validate(self) -> dict[str, Any]:
         reward_tensor_lst = []
         # Lists to collect samples for the table
@@ -689,48 +711,57 @@ class RayPPOTrainer:
         length_metrics_lst = defaultdict(list)
         print("Start validation...")
         self.actor_rollout_ref_wg.prepare_rollout_engine()
-        for batch_dict in self.val_dataloader:
-            test_batch = DataProto.from_single_dict(batch_dict)
-            test_gen_batch = test_batch.pop(
-                batch_keys=["input_ids", "attention_mask", "position_ids"],
-                non_tensor_batch_keys=["raw_prompt_ids", "multi_modal_data"],
-            )
-            repeat_times = self.config.worker.rollout.val_override_config.get("n", 1)
-            test_gen_batch.meta_info = self.config.worker.rollout.val_override_config
-            test_gen_batch.meta_info["min_pixels"] = self.config.data.min_pixels
-            test_gen_batch.meta_info["max_pixels"] = self.config.data.max_pixels
-            test_gen_batch.meta_info["video_fps"] = self.config.data.video_fps
+        try:
+            for batch_dict in self.val_dataloader:
+                test_batch = DataProto.from_single_dict(batch_dict)
+                self._check_direct_caption_reward_sources(test_batch, "Validation")
+                test_gen_batch = test_batch.pop(
+                    batch_keys=["cap_input_ids", "cap_attention_mask", "cap_position_ids"],
+                    non_tensor_batch_keys=["cap_raw_prompt_ids", "cap_multi_modal_data"],
+                )
+                test_gen_batch.rename(
+                    ["cap_input_ids", "cap_attention_mask", "cap_position_ids"],
+                    ["input_ids", "attention_mask", "position_ids"],
+                )
+                test_gen_batch.non_tensor_batch["raw_prompt_ids"] = test_gen_batch.non_tensor_batch.pop("cap_raw_prompt_ids")
+                if "cap_multi_modal_data" in test_gen_batch.non_tensor_batch:
+                    test_gen_batch.non_tensor_batch["multi_modal_data"] = test_gen_batch.non_tensor_batch.pop("cap_multi_modal_data")
 
-            test_gen_batch, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_ref_wg.world_size)
-            test_output_gen_batch = self.actor_rollout_ref_wg.generate_sequences(test_gen_batch)
-            test_output_gen_batch = unpad_dataproto(test_output_gen_batch, pad_size=pad_size * repeat_times)
+                repeat_times = self.config.worker.rollout.val_override_config.get("n", 1)
+                test_gen_batch.meta_info = dict(self.config.worker.rollout.val_override_config)
+                test_gen_batch.meta_info["min_pixels"] = self.config.data.min_pixels
+                test_gen_batch.meta_info["max_pixels"] = self.config.data.max_pixels
+                test_gen_batch.meta_info["video_fps"] = self.config.data.video_fps
+                test_gen_batch.meta_info["task"] = "caption"
 
-            # repeat to align with repeated responses in rollout
-            test_batch = test_batch.repeat(repeat_times=repeat_times, interleave=True)
-            test_batch = test_batch.union(test_output_gen_batch)
+                test_gen_batch, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_ref_wg.world_size)
+                test_output_gen_batch = self.actor_rollout_ref_wg.generate_sequences(test_gen_batch)
+                test_output_gen_batch = unpad_dataproto(test_output_gen_batch, pad_size=pad_size * repeat_times)
 
-            # evaluate using reward_function
-            reward_tensor, reward_metrics = ray.get(self.val_reward_fn.compute_reward.remote(test_batch))
+                # repeat to align with repeated responses in rollout
+                test_batch = test_batch.repeat(repeat_times=repeat_times, interleave=True)
+                test_batch = test_batch.union(test_output_gen_batch)
 
-            # store generations
-            input_ids = test_batch.batch["prompts"]
-            input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
-            output_ids = test_batch.batch["responses"]
-            output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
-            scores = reward_tensor.sum(-1).cpu().tolist()
-            sample_inputs.extend(input_texts)
-            sample_outputs.extend(output_texts)
-            sample_labels.extend(test_batch.non_tensor_batch["ground_truth"].tolist())
-            sample_scores.extend(scores)
+                reward_tensor, reward_metrics = ray.get(self._compute_reward_ref(test_batch, "caption", validation=True))
 
-            reward_tensor_lst.append(reward_tensor)
-            for key, value in reward_metrics.items():
-                reward_metrics_lst[key].extend(value)
+                input_ids = test_batch.batch["prompts"]
+                input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+                output_ids = test_batch.batch["responses"]
+                output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+                scores = reward_tensor.sum(-1).cpu().tolist()
+                sample_inputs.extend(input_texts)
+                sample_outputs.extend(output_texts)
+                sample_labels.extend(test_batch.non_tensor_batch["cap_ground_truth"].tolist())
+                sample_scores.extend(scores)
 
-            for key, value in compute_length_metrics(test_batch).items():
-                length_metrics_lst[key].append(value)
+                reward_tensor_lst.append(reward_tensor)
+                for key, value in reward_metrics.items():
+                    reward_metrics_lst[key].extend(value)
 
-        self.actor_rollout_ref_wg.release_rollout_engine()
+                for key, value in compute_length_metrics(test_batch).items():
+                    length_metrics_lst[key].append(value)
+        finally:
+            self.actor_rollout_ref_wg.release_rollout_engine()
         self._maybe_log_val_generations(sample_inputs, sample_outputs, sample_labels, sample_scores)
         self.val_reward_score = torch.cat(reward_tensor_lst, dim=0).sum(-1).mean().item()
         val_reward_metrics = {f"val/{key}_reward": value for key, value in reduce_metrics(reward_metrics_lst).items()}
@@ -776,11 +807,13 @@ class RayPPOTrainer:
                 "video_fps": self.config.data.video_fps,
             }
 
-            DW_SOURCES = NESTED_CYCLE_SOURCES
+            DW_SOURCES = NESTED_CYCLE_SOURCES | {"groundingme"}
             new_batch: DataProto = DataProto.from_single_dict(batch_dict, meta_info=meta_info)
             new_batch.non_tensor_batch["uid"] = np.array(
                 [str(uuid.uuid4()) for _ in range(len(new_batch.batch))], dtype=object
             )
+            if self.config.algorithm.adv_estimator == "remax" or self.config.algorithm.online_filtering:
+                self._check_direct_caption_reward_sources(new_batch, "ReMax/online filtering")
 
             # prepare gen_batch for generation of captioning / segmentation training
             task_dict = {
@@ -810,7 +843,7 @@ class RayPPOTrainer:
                 gen_baseline_output = self.actor_rollout_ref_wg.generate_sequences(gen_baseline_batch)
 
                 new_batch = new_batch.union(gen_baseline_output)
-                reward_baseline_tensor, _ = ray.get(self.reward_fn.compute_reward.remote(new_batch))
+                reward_baseline_tensor, _ = ray.get(self._compute_reward_ref(new_batch, "caption"))
                 reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
                 new_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
@@ -823,12 +856,17 @@ class RayPPOTrainer:
 
             # filter group
             if self.config.algorithm.online_filtering:
-                reward_tensor, reward_metrics = ray.get(self.reward_fn.compute_reward.remote(new_batch))
+                reward_tensor, reward_metrics = ray.get(self._compute_reward_ref(new_batch, "caption"))
                 new_batch.batch["token_level_scores"] = reward_tensor
                 for k, v in reward_metrics.items():
                     all_metrics[k].extend(v)
 
-                filter_scores = reward_metrics[self.config.algorithm.filter_key]
+                filter_key = self.config.algorithm.filter_key
+                if filter_key == "overall" and "cap_overall" in reward_metrics:
+                    filter_key = "cap_overall"
+                if filter_key not in reward_metrics:
+                    raise ValueError(f"Unknown online filter metric {filter_key!r}; available: {sorted(reward_metrics)}")
+                filter_scores = reward_metrics[filter_key]
                 uids = new_batch.non_tensor_batch["uid"]
                 uid2scores = defaultdict(list)
                 for uid, score in zip(uids, filter_scores):
@@ -1299,9 +1337,10 @@ class RayPPOTrainer:
             # windows (self-mined strays + GT) BEFORE any repair mutates the responses.
             # Yields: per-caption bonus, per-sample zero-adv gate, injection licenses.
             allowed_groups = None
-            pre_repair_accuracy = None
+            # Caption rewards must always reflect the unmodified inner
+            # rollouts, including when repair is enabled without the judge.
+            pre_repair_accuracy = flat_accuracy.copy()
             if getattr(actor_cfg, "judge_enable", False):
-                pre_repair_accuracy = flat_accuracy.copy()  # decontaminated caption judge
                 judge_bonus, judge_zero_adv, allowed_groups, judge_metrics = self._readback_judge(
                     batch, gen_batch_output, gen_batch, all_seg_problems, n_samples, flat_accuracy
                 )
@@ -1335,7 +1374,7 @@ class RayPPOTrainer:
             # scores use PRE-repair accuracy (the injected GT row must not bump the
             # dead caption's reward — the v1 contamination leak); seg side keeps the
             # repaired flat_accuracy.
-            cap_accuracy = pre_repair_accuracy if pre_repair_accuracy is not None else flat_accuracy
+            cap_accuracy = pre_repair_accuracy
             cap_mean_accuracy = [
                 np.mean(cap_accuracy[b * n_samples : (b + 1) * n_samples])
                 for b in range(n_prompts)
@@ -1684,6 +1723,8 @@ class RayPPOTrainer:
                     # DataProto.concat requires identical schemas.
                     if 'temporal_dense_scores' in cycle_cap_batch.non_tensor_batch:
                         del cycle_cap_batch.non_tensor_batch['temporal_dense_scores']
+                    if 'judge_bonus' in cycle_cap_batch.non_tensor_batch:
+                        del cycle_cap_batch.non_tensor_batch['judge_bonus']
                     cap_batch = DataProto.concat([non_cycle_batch, cycle_cap_batch])
                 elif non_cycle_batch is not None:
                     cap_batch = non_cycle_batch

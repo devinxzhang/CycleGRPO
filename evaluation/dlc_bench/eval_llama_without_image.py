@@ -22,6 +22,8 @@ import inflect
 from openai import OpenAI
 from tqdm import tqdm
 
+from cache_utils import evaluation_cache_key, reusable_responses
+
 prompt_eval = """Answer the multiple-choice question based on the text description of an object in an image. You need to follow these rules:
 1. Do not output any reasoning. Do not perform correction. Please output exactly one answer from the choices for each question. Do not repeat the question.
 2. There is no need for exact matching. Please choose the closest option based on the description.
@@ -152,7 +154,7 @@ def evaluate(
 
         if (
             response_override is None
-            or len(response_override) < index
+            or len(response_override) <= index
             or response_override[index] is None
         ):
             response_item = query(prompt_item, temperature, max_tokens, model)
@@ -400,13 +402,6 @@ if __name__ == "__main__":
     missing_key_count = 0
     for key in tqdm(keys, disable=args.quiet):
         key = str(key)
-        if key in eval_results:
-            if args.verbose:
-                print(f"Skipping {key}")
-            response_override = eval_results[key]["response"]
-        else:
-            response_override = None
-
         if key not in data_pred:
             if args.default_prediction is None:
                 raise ValueError(
@@ -447,6 +442,25 @@ if __name__ == "__main__":
 
         # Add the recognition question to the beginning of the list
         question_dicts = [recognition_question_dict, *data_qa[key]]
+        cache_key = evaluation_cache_key(
+            pred_value,
+            question_dicts,
+            prompt_eval,
+            {
+                "model": args.model,
+                "base_url": args.base_url,
+                "temperature": 0.0,
+                "max_tokens": 300,
+                "top_p": 1,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+            },
+        )
+        response_override = reusable_responses(
+            eval_results.get(key), cache_key, len(question_dicts)
+        )
+        if response_override is not None and args.verbose:
+            print(f"Reusing cached responses for {key}")
         info = evaluate(
             question_dicts=question_dicts,
             pred_caption=pred_value,
@@ -461,7 +475,7 @@ if __name__ == "__main__":
         scores[key] = score
         scores_pos[key] = info["score_pos"]
         scores_neg[key] = info["score_neg"]
-        eval_results[key] = {"pred": pred_value, **info}
+        eval_results[key] = {"pred": pred_value, "cache_key": cache_key, **info}
 
         if args.verbose:
             print(f"Score: {score}")

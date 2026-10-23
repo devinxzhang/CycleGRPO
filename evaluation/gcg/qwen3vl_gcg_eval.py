@@ -14,11 +14,13 @@ from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 from PIL import Image
 import re
 import json
+import tempfile
 
 from qwen_vl_utils import process_vision_info
 from torchvision.transforms.functional import to_pil_image
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
 from projects.vlm.tokenmask.evaluation.utils import _init_dist_pytorch, get_dist_info, collect_results_cpu
+from gcg_result_store import image_sha256, make_run_id, output_is_complete
 
 
 class DirectResize:
@@ -83,30 +85,26 @@ def load_image_with_retry(path, retries=6, base_delay=0.5):
             time.sleep(base_delay * (2 ** i))  # 0.5, 1, 2, 4, 8, 16s
     raise last
 
+
 # download from https://huggingface.co/datasets/Dense-World/Sa2VA-Training
-IMAGE_FOLDER = '<PATH_TO_DATA>/Sa2VA-Training/glamm_data/images/grandf/val_test'
+IMAGE_FOLDER = os.environ.get('IMAGE_FOLDER', '<PATH_TO_DATA>/Sa2VA-Training/glamm_data/images/grandf/val_test')
 
 
 class GCGInferenceDataset:
     def __init__(self,
                  image_folder,
-                 save_dir=None,
                  ):
         self.image_folder = image_folder
 
-        # sort: deterministic order so all shards agree on the slice boundaries
-        self.images = sorted(os.listdir(image_folder))
-
-        if save_dir is not None:
-            # filter evaluated
-            self.save_dir = save_dir
-            exsits_files = os.listdir(self.save_dir)
-            exsits_files = [_file[:-5] for _file in exsits_files]
-            _images = []
-            for i, item in enumerate(self.images):
-                if item[:-4] not in exsits_files:
-                    _images.append(item)
-            self.images = _images
+        # Every process must shard the same full list. Resume filtering happens
+        # after sharding so that processes starting at different times agree.
+        self.images = sorted(
+            name for name in os.listdir(image_folder)
+            if os.path.isfile(os.path.join(image_folder, name))
+        )
+        stems = [os.path.splitext(name)[0] for name in self.images]
+        if len(stems) != len(set(stems)):
+            raise ValueError("Image filenames have duplicate stems; outputs would collide")
 
     def __len__(self):
         return len(self.images)
@@ -209,6 +207,7 @@ def main():
         torch.cuda.set_device(gpu_id)
     device = torch.device(f"cuda:{gpu_id}")
     print(f"[task {rank}/{world_size}] using GPU {gpu_id}")
+    run_id = make_run_id(args.model_path, args.vq_sam2_path, args.sam2_path)
 
     model = Qwen3VLForConditionalGeneration.from_pretrained(
         args.model_path, torch_dtype="auto"
@@ -245,19 +244,24 @@ def main():
 
     dataset = GCGInferenceDataset(
         image_folder=IMAGE_FOLDER,
-        save_dir=args.save_dir,
     )
 
     results = []
     n_samples = len(dataset)
 
-    # shard the (sorted, resume-filtered) sample list across world_size processes
+    # Shard the complete sorted list before checking for existing outputs.
     per_rank_samples = math.ceil(n_samples / world_size)
     start_idx = per_rank_samples * rank
     end_idx = min(n_samples, per_rank_samples * (rank + 1))
     print(f"[task {rank}/{world_size}] samples {start_idx}:{end_idx} of {n_samples}")
 
     for idx in tqdm.tqdm(range(start_idx, end_idx)):
+        image_name = dataset.images[idx]
+        image_id = os.path.splitext(image_name)[0]
+        output_path = os.path.join(args.save_dir, f"{image_id}.json")
+        image_hash = image_sha256(os.path.join(IMAGE_FOLDER, image_name))
+        if output_is_complete(output_path, image_id, run_id, image_hash):
+            continue
         data_batch = dataset[idx]
         prediction = {'img_id': data_batch['img_id'], 'image_file': data_batch['image_file']}
         del data_batch['img_id'], data_batch['image_file']
@@ -358,7 +362,9 @@ def main():
             args.save_dir,
             prediction['image_file'],
             output_text[0],
-            prediction['prediction_masks']
+            prediction['prediction_masks'],
+            run_id,
+            image_hash,
         )
         results.append(output_text[0])
 
@@ -368,7 +374,7 @@ def main():
         results = collect_results_cpu(results, len(dataset), tmpdir='./gcg_eval_tmp')
 
 
-def process_and_save_output(output_dir, image_name, text_output, pred_masks):
+def process_and_save_output(output_dir, image_name, text_output, pred_masks, run_id, image_hash):
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
@@ -399,7 +405,9 @@ def process_and_save_output(output_dir, image_name, text_output, pred_masks):
     # Create results dictionary
     # print(f"clean_str: {cleaned_str}")
     result_dict = {
-        "image_id": image_name[:-4],
+        "image_id": os.path.splitext(image_name)[0],
+        "run_id": run_id,
+        "image_sha256": image_hash,
         "caption": cleaned_str,
         "phrases": phrases,
         "pred_masks": rle_masks
@@ -408,14 +416,23 @@ def process_and_save_output(output_dir, image_name, text_output, pred_masks):
     # print(cleaned_str)
     # print(phrases)
 
-    output_path = f"{output_dir}/{image_name[:-4]}.json"
+    output_path = os.path.join(output_dir, f"{os.path.splitext(image_name)[0]}.json")
 
-    # 如果输出已存在则跳过写入
-    if os.path.exists(output_path):
+    if output_is_complete(output_path, result_dict["image_id"], run_id, image_hash):
         return
 
-    with open(output_path, 'w') as f:
-        json.dump(result_dict, f)
+    # Atomic replacement keeps interrupted writes from appearing complete.
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output_dir,
+                                         prefix=f".{result_dict['image_id']}.", suffix=".tmp",
+                                         delete=False) as f:
+            temp_path = f.name
+            json.dump(result_dict, f)
+        os.replace(temp_path, output_path)
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.unlink(temp_path)
 
     return
 

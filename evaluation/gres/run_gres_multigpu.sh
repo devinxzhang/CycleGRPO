@@ -43,7 +43,13 @@ for ((t=0; t<NUM_GPUS; t++)); do
 done
 
 # ---- global progress monitor: count per-case json in SAVE_DIR vs dataset size ----
-TOTAL=$(python -c "import json,sys; print(len(json.load(open('$DATASET'))))")
+TOTAL=$(python3 - "$DATASET" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    print(len(json.load(source)))
+PY
+)
 START=$(date +%s)
 echo "monitoring progress: $TOTAL samples total (status every 20s)"
 while true; do
@@ -68,5 +74,12 @@ rc=0
 for p in "${pids[@]}"; do wait "$p" || rc=1; done
 done=$(find "$SAVE_DIR" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l)
 echo "All shards finished (rc=$rc). $done/$TOTAL outputs in $SAVE_DIR"
+if ! python3 "$SCRIPT_DIR/result_store.py" \
+    --dataset "$DATASET" --model_path "$MODEL_PATH" \
+    --vq_sam2_path "$VQ_SAM2_PATH" --sam2_path "$SAM2_PATH" \
+    --save_dir "$SAVE_DIR" --require_complete; then
+    echo "GRES output verification failed: some results are missing or stale" >&2
+    rc=1
+fi
 echo "(metric was printed by the last shard's log; or re-run with --metric_only)"
 exit $rc

@@ -35,6 +35,8 @@ from PIL import Image
 from pycocotools.coco import COCO
 from tqdm import tqdm
 
+from cache_utils import evaluation_cache_key, reusable_responses
+
 # Define Azure OpenAI details. Credentials and endpoints must be supplied by
 # the user; never commit them to the repository.
 model_name = os.environ.get("AZURE_OPENAI_MODEL", "gpt-4o-2024-11-20")
@@ -176,7 +178,7 @@ def evaluate(
 
         if (
             response_override is None
-            or len(response_override) < index
+            or len(response_override) <= index
             or response_override[index] is None
         ):
             response_item = query(prompt_item, images, temperature, max_tokens)
@@ -325,6 +327,12 @@ if __name__ == "__main__":
         "--pred", type=str, help="Path to the prediction JSON file", required=True
     )
     parser.add_argument(
+        "--default-prediction",
+        type=str,
+        default=None,
+        help="Default prediction if a key is absent from the prediction file",
+    )
+    parser.add_argument(
         "--qa",
         type=str,
         help="Path to the reference QA file",
@@ -431,11 +439,6 @@ if __name__ == "__main__":
         base64_cropped_mask = encode_pil_image_to_base64(cropped_pil_mask)
         images = [base64_cropped_image, base64_cropped_mask]
 
-        if key in eval_results:
-            response_override = eval_results[key]["response"]
-        else:
-            response_override = None
-
         if key not in data_pred:
             if args.default_prediction is None:
                 raise ValueError(f"Key {key} not found in prediction data")
@@ -454,6 +457,25 @@ if __name__ == "__main__":
         }
 
         question_dicts = [recognition_question_dict, *data_qa[key]]
+        cache_key = evaluation_cache_key(
+            pred_value,
+            question_dicts,
+            prompt_eval,
+            {
+                "model": model_name,
+                "endpoint": base_url,
+                "api_version": api_version,
+                "temperature": 0.0,
+                "max_tokens": 300,
+                "top_p": 1,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+            },
+            images=images,
+        )
+        response_override = reusable_responses(
+            eval_results.get(key), cache_key, len(question_dicts)
+        )
         info = evaluate(
             question_dicts=question_dicts,
             pred_caption=pred_value,
@@ -467,12 +489,13 @@ if __name__ == "__main__":
         scores[key] = score
         scores_pos[key] = info["score_pos"]
         scores_neg[key] = info["score_neg"]
-        eval_results[key] = {"pred": pred_value, **info}
+        eval_results[key] = {"pred": pred_value, "cache_key": cache_key, **info}
 
     avg_score_pos = sum(scores_pos.values()) / len(scores_pos)
-    avg_score_neg = sum(
-        [item for item in scores_neg.values() if item is not None]
-    ) / len(scores_neg)
+    scores_neg_valid_only = [item for item in scores_neg.values() if item is not None]
+    if not scores_neg_valid_only:
+        raise ValueError("No samples have negative questions; average negative score is undefined")
+    avg_score_neg = sum(scores_neg_valid_only) / len(scores_neg_valid_only)
     eval_results["avg_pos"] = avg_score_pos
     eval_results["avg_neg"] = avg_score_neg
 

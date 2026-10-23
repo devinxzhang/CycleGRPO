@@ -93,11 +93,11 @@ DRY_RUN=1 MODEL_PATH=/path/to/cosft TRAIN_FILE=/path/to/train.parquet \
   bash generalized/train.sh temporal_qwen
 ```
 
-For OMTG, the video protocol is 2 fps, 4--768 frames, and a total pixel
+For OMTG, the video protocol is 2 fps, 4–768 frames, and a total pixel
 budget of 8,388,608. An optional deterministic frame cache is supported via
 `CYCLEGRPO_FRAME_CACHE_ROOT`; set `CYCLEGRPO_REQUIRE_FRAME_CACHE=true` only after
 building a complete compatible cache. The Qwen temporal recipe retains
-0.25 fps and a 262,144-pixel frame cap. Open-o3 uses 2 fps, 4--16 frames,
+0.25 fps and a 262,144-pixel frame cap. Open-o3 uses 2 fps, 4–16 frames,
 plus timestamped query conditioning. These are training protocols, not a
 claim that every evaluation model receives a fixed identical frame count.
 
@@ -117,7 +117,7 @@ parquet and split/audit manifests, random state, and GPU software environment.
 - Each caption conditions `K` localization rollouts from the same policy.
 - Temporal sources use temporal overlap, including after compact multimodal
   transport. They must not fall through to mask-token accuracy.
-- Spatio-temporal sources parse normalized timestamp--box supports and score
+- Spatio-temporal sources parse normalized timestamp–box supports and score
   their overlap. The main mixed recipe uses `stgr_cyclegrpo`; the atomic and
   single-object trajectory variants are available separately, not aliases
   for the main experiment.

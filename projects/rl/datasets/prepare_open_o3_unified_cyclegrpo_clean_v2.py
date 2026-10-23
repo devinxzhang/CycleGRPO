@@ -114,6 +114,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         raise AssertionError("Input parquet/audit is not the audited 22,227-row version")
     if Path(audit["parquet"]).resolve() != input_path:
         raise AssertionError("Audit artifact points to a different input parquet")
+    audited_hash = audit.get("parquet_sha256")
+    if not audited_hash or audited_hash != _sha256(input_path):
+        raise AssertionError("Input parquet contents differ from the audited version")
 
     duplicate = _indices(audit, "duplicate_model_equivalent")
     remove_by_reason: dict[str, set[int]] = {

@@ -32,7 +32,6 @@ from torchvision.transforms.functional import to_pil_image
 from transformers import PreTrainedTokenizer
 
 from ...protocol import DataProto
-from ...utils.cyclegrpo_profiles import NESTED_CYCLE_SOURCES
 from .config import RewardConfig
 
 class RewardInput(TypedDict):
@@ -175,8 +174,8 @@ class BatchFunctionRewardManager(FunctionRewardManager):
                     "response_length": cur_response_length,
                     "source": data.non_tensor_batch["source"][i],
                     "task": task,
-                    "iou_scores": data.non_tensor_batch["iou_scores"][i] if data.non_tensor_batch["source"][i] in NESTED_CYCLE_SOURCES else None,
-                    "mask_token_accuracy": data.non_tensor_batch["mask_token_accuracy"][i] if task == 'segmentation' else None,
+                    "iou_scores": data.non_tensor_batch["iou_scores"][i] if "iou_scores" in data.non_tensor_batch else None,
+                    "mask_token_accuracy": mask_token_accuracy[i] if mask_token_accuracy is not None else None,
                     "temporal_dense_score": (
                         data.non_tensor_batch["temporal_dense_score"][i]
                         if "temporal_dense_score" in data.non_tensor_batch else None
@@ -189,7 +188,10 @@ class BatchFunctionRewardManager(FunctionRewardManager):
                     # "image": images[i]['images'][0] if task == 'segmentation' else None,
                     # "gt_masks": masks[i] if task == 'segmentation' else None,
                     "cap_ground_truth": cap_ground_truth[i] if cap_ground_truth is not None else None,
-                    "seg_ground_truth": seg_ground_truth[i] if task == 'segmentation' else None,
+                    "seg_ground_truth": seg_ground_truth[i] if seg_ground_truth is not None else None,
+                    "ground_truth": (cap_ground_truth[i] if task == 'caption' and cap_ground_truth is not None
+                                     else seg_ground_truth[i] if task == 'segmentation' and seg_ground_truth is not None
+                                     else None),
                     "extra_info": data.non_tensor_batch["extra_info"][i] if "extra_info" in data.non_tensor_batch else None,
                     # "cap_images": cap_images[i] if task == 'segmentation' else None,
                     # "cap_responses": cap_responses[i] if task == 'segmentation' else None,
@@ -207,7 +209,9 @@ class BatchFunctionRewardManager(FunctionRewardManager):
             reward_tensor[i, cur_response_length - 1] = score["cap_overall"] if task == 'caption' else score["seg_overall"]
             for key, value in score.items():
                 reward_metrics[key].append(value)
-            if task == 'caption' and data.non_tensor_batch["source"][i] in NESTED_CYCLE_SOURCES | {'groundingme', ''}:
-                reward_metrics['cap_correct_mask'] = data.non_tensor_batch["correct_mask"][i]
+            if task == 'caption' and "correct_mask" in data.non_tensor_batch:
+                correct_mask = data.non_tensor_batch["correct_mask"][i]
+                if correct_mask is not None:
+                    reward_metrics['cap_correct_mask'].append(correct_mask)
 
         return reward_tensor, reward_metrics

@@ -106,8 +106,10 @@ trainer:
   nnodes: 1
   n_gpus_per_node: 8
   max_try_make_batch: 20  # -1 means no limit
-  val_freq: 5  # -1 to disable
-  val_before_train: true
+  # The cycle-aware validation path is not yet wired to cap_/seg_ data and
+  # the batch reward interface. Keep it off until that integration is tested.
+  val_freq: -1
+  val_before_train: false
   val_only: false
   val_generations_to_log: 3
   save_freq: 5  # -1 to disable
