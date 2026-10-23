@@ -107,7 +107,7 @@ def main():
             new_key = new_key[len('hf_model.'):]
         pretrained_state_dict_new[new_key] = pretrained_state_dict[key]
     
-    # vq_sam2.load_state_dict(pretrained_state_dict_new)
+    vq_sam2.load_state_dict(pretrained_state_dict_new)
 
     sam2_image_processor = DirectResize(1024)
 
@@ -190,5 +190,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    

@@ -8,6 +8,7 @@ than being accepted merely because the converter emitted them.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -189,6 +190,14 @@ def check_media(paths: list[str], worker, workers: int, label: str) -> dict[str,
     return results
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -205,6 +214,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    parquet_sha256 = sha256_file(args.parquet)
+    parquet_size_bytes = args.parquet.stat().st_size
     df = pd.read_parquet(args.parquet)
     df["_media"] = df.apply(media_path, axis=1)
     issues: dict[str, list[int]] = defaultdict(list)
@@ -368,6 +379,8 @@ def main() -> None:
     )
     report = {
         "parquet": str(args.parquet.resolve()),
+        "parquet_sha256": parquet_sha256,
+        "parquet_size_bytes": parquet_size_bytes,
         "rows": len(df),
         "route_counts": route_counts,
         "unique_images": len(image_paths),

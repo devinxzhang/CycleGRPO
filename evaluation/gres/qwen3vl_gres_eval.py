@@ -24,6 +24,8 @@ from torchvision.transforms.functional import to_pil_image
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
 
 from projects.vlm.tokenmask.evaluation.grefer import G_REFER
+from result_store import (count_current_results, load_cases, load_current_result,
+                          make_run_id, save_result)
 
 
 class DirectResize:
@@ -178,6 +180,8 @@ def parse_args():
                         help='CUDA device to bind this process to. Default -1 => use task_id.')
     parser.add_argument('--metric_only', '--metric-only', action='store_true',
                         help='Skip inference; just compute the metric over existing save_dir.')
+    parser.add_argument('--verify_outputs', '--verify-outputs', action='store_true',
+                        help='Check that every current dataset case has a matching result.')
     args = parser.parse_args()
     return args
 
@@ -275,62 +279,7 @@ def fix_mt_format_comprehensive(text):
 from projects.vlm.tokenmask.evaluation.utils import Summary, AverageMeter, intersectionAndUnionGPU
 
 
-def _iter_json_records(json_file_path):
-    """Yield dict records from JSON/JSONL/concatenated JSON content."""
-    with open(json_file_path, "r", encoding="utf-8") as f:
-        content = f.read().strip()
-
-    if not content:
-        return []
-
-    def _collect(obj, out):
-        if isinstance(obj, dict):
-            out.append(obj)
-        elif isinstance(obj, list):
-            for item in obj:
-                if isinstance(item, dict):
-                    out.append(item)
-
-    records = []
-    try:
-        parsed = json.loads(content)
-        _collect(parsed, records)
-        return records
-    except json.JSONDecodeError:
-        pass
-
-    # Fallback 1: JSONL
-    for line in content.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            parsed = json.loads(line)
-            _collect(parsed, records)
-        except json.JSONDecodeError:
-            continue
-    if records:
-        return records
-
-    # Fallback 2: concatenated JSON objects without separators
-    decoder = json.JSONDecoder()
-    idx = 0
-    n = len(content)
-    while idx < n:
-        while idx < n and content[idx].isspace():
-            idx += 1
-        if idx >= n:
-            break
-        try:
-            parsed, end = decoder.raw_decode(content, idx)
-            _collect(parsed, records)
-            idx = end
-        except json.JSONDecodeError:
-            break
-    return records
-
-
-def metric(args):
+def metric(args, all_data_dict, run_id):
     inter_meter = AverageMeter("Intersec", ":6.3f", Summary.SUM)
     union_meter = AverageMeter("Union", ":6.3f", Summary.SUM)
     g_iou_meter = AverageMeter("gIoU", ":6.3f", Summary.SUM)
@@ -339,54 +288,45 @@ def metric(args):
     nt_fp_meter = AverageMeter("NT_FP", ":6.3f", Summary.SUM)
     nt_fn_meter = AverageMeter("NT_FN", ":6.3f", Summary.SUM)
 
-    for json_file in os.listdir(f"{args.save_dir}"):
-        if not (json_file.endswith(".json") or json_file.endswith(".jsonl")):
-            continue
-        json_file_path = os.path.join(f"{args.save_dir}", json_file)
-        records = _iter_json_records(json_file_path)
-        if not records:
-            print(f"[warn] skip unreadable/empty file: {json_file_path}")
-            continue
+    results = [load_current_result(args.save_dir, case, run_id) for case in all_data_dict]
+    missing = [case["case_id"] for case, result in zip(all_data_dict, results) if result is None]
+    if missing:
+        raise RuntimeError(f"GRES results incomplete for this dataset/model: "
+                           f"{len(missing)}/{len(all_data_dict)} missing or stale "
+                           f"(first case IDs: {missing[:10]})")
 
-        for json_data in records:
-            if "pred_masks" not in json_data or "gt_masks" not in json_data:
-                continue
+    for json_data in results:
+        pred_mask = rle_to_mask([json_data["pred_masks"]])[0]
+        gt_mask = rle_to_mask([json_data["gt_masks"]])[0]
 
-            pred_mask = rle_to_mask([json_data["pred_masks"]])[0]
-            gt_mask = rle_to_mask([json_data["gt_masks"]])[0]
+        pred_mask = torch.from_numpy(pred_mask).int().cuda()
+        gt_mask = torch.from_numpy(gt_mask).int().cuda()
 
-            pred_mask = torch.from_numpy(pred_mask).int().cuda()
-            gt_mask = torch.from_numpy(gt_mask).int().cuda()
+        no_target = gt_mask.sum() < 1.0
+        no_prediction = pred_mask.sum() < 1.0
+        if no_target:
+            (nt_tp_meter if no_prediction else nt_fn_meter).update(1.0)
+        else:
+            (nt_fp_meter if no_prediction else nt_tn_meter).update(1.0)
 
-            if gt_mask.sum() < 1.0:  # empty target
-                if pred_mask.sum() < 1.0:
-                    # true positive
-                    nt_tp_meter.update(1.0)
-                    g_iou_meter.update(1.0)
-                else:
-                    inter_i, union_i, _ = intersectionAndUnionGPU(pred_mask.contiguous().clone(), gt_mask.contiguous().clone(), K=2, ignore_index=255)
-                    inter_i = inter_i.cpu().numpy()
-                    union_i = union_i.cpu().numpy()
-                    nt_fn_meter.update(1.0)
-                    g_iou_meter.update(0.0)
-                    union_meter.update(union_i)
-            else:
-                if pred_mask.sum() < 1.0:
-                    nt_fp_meter.update(1.0)
-                else:
-                    nt_tn_meter.update(1.0)
-                try:
-                    inter_i, union_i, _ = intersectionAndUnionGPU(pred_mask.contiguous().clone(), gt_mask.contiguous().clone(), K=2, ignore_index=255)
-                except Exception:
-                    print("pred_mask.shape: ", pred_mask.shape)
-                    print("gt_mask.shape: ", gt_mask.shape)
-                    continue
-                inter_i = inter_i.cpu().numpy()
-                union_i = union_i.cpu().numpy()
-                this_giou = inter_i / (union_i + 1e-8)
-                inter_meter.update(inter_i)
-                union_meter.update(union_i)
-                g_iou_meter.update(this_giou)
+        try:
+            inter_i, union_i, _ = intersectionAndUnionGPU(
+                pred_mask.contiguous().clone(), gt_mask.contiguous().clone(), K=2, ignore_index=255
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"GRES mask metric failed for case {json_data['case_id']}: "
+                f"prediction shape={tuple(pred_mask.shape)}, "
+                f"ground truth shape={tuple(gt_mask.shape)}"
+            ) from exc
+        inter_i = inter_i.cpu().numpy()
+        union_i = union_i.cpu().numpy()
+        inter_meter.update(inter_i)
+        union_meter.update(union_i)
+        this_giou = inter_i / (union_i + 1e-8)
+        if no_target and no_prediction:
+            this_giou[1] = 1.0  # empty target with empty prediction is correct
+        g_iou_meter.update(this_giou)
         
     # inter_meter.all_reduce()
     # union_meter.all_reduce()
@@ -396,40 +336,51 @@ def metric(args):
     # nt_fp_meter.all_reduce()
     # nt_fn_meter.all_reduce()
 
-    N_acc = nt_tp_meter.sum / (nt_tp_meter.sum + nt_fn_meter.sum)  # for gt is empty, pred is empty
-    T_acc = nt_tn_meter.sum / (nt_tn_meter.sum + nt_fp_meter.sum)  # for gt is target, pred is target
+    n_total = nt_tp_meter.sum + nt_fn_meter.sum
+    t_total = nt_tn_meter.sum + nt_fp_meter.sum
+    N_acc = nt_tp_meter.sum / n_total if n_total else None
+    T_acc = nt_tn_meter.sum / t_total if t_total else None
     g_iou = g_iou_meter.avg[1]
     c_iou = (inter_meter.sum / (union_meter.sum + 1e-10))[1]
     log_stats = {}
-    log_stats["N_acc"] = round(N_acc * 100, 2)
-    log_stats["T_acc"] = round(T_acc * 100, 2)
+    log_stats["N_acc"] = round(N_acc * 100, 2) if N_acc is not None else None
+    log_stats["T_acc"] = round(T_acc * 100, 2) if T_acc is not None else None
     log_stats["g_iou"] = round(g_iou * 100, 2)
     log_stats["c_iou"] = round(c_iou * 100, 2)
     print(log_stats)
         
-def maybe_metric(all_data_dict, args):
+def maybe_metric(all_data_dict, args, run_id):
     """Compute the GRES metric once EVERY shard has written its {case_id}.json.
 
-    Called by each shard at exit; only the last one to finish sees all files and
-    runs metric() (which reads the whole save_dir). metric() only prints, so even
-    a duplicate trigger is harmless.
+    Called by each shard at exit. Only results matching this dataset and model
+    count toward completion. Duplicate triggers only print the metric again.
     """
-    want = [d["case_id"] for d in all_data_dict]
-    n_done = sum(os.path.exists(os.path.join(args.save_dir, f"{c}.json")) for c in want)
-    if n_done < len(want):
-        print(f"[task {args.task_id}] metric skipped: {n_done}/{len(want)} done, "
+    n_done = count_current_results(args.save_dir, all_data_dict, run_id)
+    if n_done < len(all_data_dict):
+        print(f"[task {args.task_id}] metric skipped: {n_done}/{len(all_data_dict)} done, "
               f"other shards still running.")
         return
-    print(f"[task {args.task_id}] all {len(want)} samples done -> computing metric")
-    metric(args)
+    print(f"[task {args.task_id}] all {len(all_data_dict)} samples done -> computing metric")
+    metric(args, all_data_dict, run_id)
 
 
 def main():
     args = parse_args()
 
+    all_data_dict, dataset_bytes = load_cases(args.dataset)
+    run_id = make_run_id(dataset_bytes, args.model_path, args.vq_sam2_path,
+                         args.sam2_path)
+
+    if args.verify_outputs:
+        n_done = count_current_results(args.save_dir, all_data_dict, run_id)
+        print(f"GRES output check: {n_done}/{len(all_data_dict)} current results")
+        if n_done != len(all_data_dict):
+            raise RuntimeError("GRES outputs are missing, invalid, or from another run")
+        return args
+
     # metric-only: skip all model loading, just score existing predictions.
     if args.metric_only:
-        metric(args)
+        metric(args, all_data_dict, run_id)
         return args
 
     # ---- multi-GPU data parallelism: bind this process to one GPU ----
@@ -469,15 +420,6 @@ def main():
 
     os.makedirs(args.save_dir, exist_ok=True)  # exist_ok: shards may race to create it
 
-    all_data_dict = []
-    case_id = 0
-    with open(args.dataset, 'r') as f:
-        json_data = json.load(f)
-        for item in json_data:
-            item.update({'case_id': case_id})
-            all_data_dict.append(item)
-            case_id += 1
-    
     rows = len(all_data_dict)
     # Data-parallel sharding across `num_tasks` processes (one per GPU).
     chunk_size = math.ceil(rows / args.num_tasks)
@@ -514,8 +456,8 @@ def main():
 
         question = f"Please segment {phrase} in this image."
         
-        if os.path.exists(f"{args.save_dir}/{case_id}.json"):
-            print("file exists.............")
+        if load_current_result(args.save_dir, data_dict, run_id) is not None:
+            print(f"case {case_id} already complete for this run")
             continue
 
         messages = [
@@ -564,8 +506,7 @@ def main():
 
             # exit(0)
 
-            with open(f"{args.save_dir}/{case_id}.json", 'w') as f:
-                json.dump(prediction, f)
+            save_result(args.save_dir, data_dict, run_id, args.model_path, prediction)
             continue
 
         if len(quant_ids) % CODEBOOK_DEPTH != 0:
@@ -579,8 +520,7 @@ def main():
             zero_mask = mask_to_rle(zero_mask)
             prediction = {'gt_masks': rle, 'pred_masks': zero_mask[0]}
 
-            with open(f"{args.save_dir}/{case_id}.json", 'w') as f:
-                json.dump(prediction, f)
+            save_result(args.save_dir, data_dict, run_id, args.model_path, prediction)
             continue
 
         batch_size = len(quant_ids) // CODEBOOK_DEPTH
@@ -620,11 +560,10 @@ def main():
 
         _pred_masks = mask_to_rle(_pred_masks)
         prediction = {'gt_masks': rle, 'pred_masks': _pred_masks[0]}
-        with open(f"{args.save_dir}/{case_id}.json", 'w') as f:
-            json.dump(prediction, f)
+        save_result(args.save_dir, data_dict, run_id, args.model_path, prediction)
 
     # once this shard is done, compute the metric iff all shards have finished
-    maybe_metric(all_data_dict, args)
+    maybe_metric(all_data_dict, args, run_id)
     return args
 
 

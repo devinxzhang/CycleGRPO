@@ -6,9 +6,9 @@
 
 ### Used by [Amazon Web Services](https://aws.amazon.com/cn/blogs/china/building-llm-model-hub-based-on-llamafactory-and-easyr1/)
 
-This project is a clean fork of the original [veRL](https://github.com/volcengine/verl) project to support vision language models, we thank all the authors for providing such a high-performance RL training framework.
+This project is a clean fork of the original [veRL](https://github.com/volcengine/verl) project to support vision language models. We thank all its authors for providing a high-performance RL training framework.
 
-EasyR1 is efficient and scalable due to the design of **[HybirdEngine](https://arxiv.org/abs/2409.19256)** and the latest release of **[vLLM](https://github.com/vllm-project/vllm)**'s SPMD mode.
+EasyR1 is efficient and scalable thanks to **[HybridFlow](https://arxiv.org/abs/2409.19256)** and the SPMD mode in the latest release of **[vLLM](https://github.com/vllm-project/vllm)**.
 
 ## Features
 
@@ -43,7 +43,7 @@ EasyR1 is efficient and scalable due to the design of **[HybirdEngine](https://a
 - flash-attn>=2.4.3
 - vllm>=0.8.3
 
-We provide a [Dockerfile](./Dockerfile) to easily build environments.
+The upstream EasyR1 project provides a [Dockerfile](https://github.com/hiyouga/EasyR1/blob/main/Dockerfile) for building environments.
 
 We recommend using the [pre-built docker image](https://hub.docker.com/r/hiyouga/verl) in EasyR1.
 
@@ -73,11 +73,11 @@ Use `USE_MODELSCOPE_HUB=1` to download models from the ModelScope hub.
 > [!NOTE]
 > Use `worker.actor.fsdp.torch_dtype=bf16` and `worker.actor.optim.strategy=adamw_bf16` to enable bf16 training.
 >
-> We are working hard to reduce the VRAM in RL training, LoRA support will be integrated in next updates.
+> We are working to reduce VRAM usage during RL training. LoRA support will be integrated in future updates.
 
 ## Tutorial: Run Qwen2.5-VL GRPO on [Geometry3K](https://huggingface.co/datasets/hiyouga/geometry3k) Dataset in Just 3 Steps
 
-![image](assets/qwen2_5_vl_7b_geo.png)
+![Geometry3K example](https://raw.githubusercontent.com/hiyouga/EasyR1/main/assets/qwen2_5_vl_7b_geo.png)
 
 ### Installation
 
@@ -115,7 +115,7 @@ Please refer to the example datasets to prepare your own dataset.
 
 ## How to Understand GRPO in EasyR1
 
-![image](assets/easyr1_grpo.png)
+![EasyR1 GRPO diagram](https://raw.githubusercontent.com/hiyouga/EasyR1/main/assets/easyr1_grpo.png)
 
 - To learn about the GRPO algorithm, you can refer to [Hugging Face's blog](https://huggingface.co/docs/trl/v0.16.1/en/grpo_trainer).
 
@@ -139,23 +139,24 @@ ray start --address=<head_node_ip>:6379
 ray status
 ```
 
-4. Run training script on the Ray head node only.
+4. Run the training script on the Ray head node only.
 
 ```bash
 bash examples/qwen2_5_vl_7b_geo3k_grpo.sh
 ```
 
-See the **[veRL's official doc](https://verl.readthedocs.io/en/latest/start/multinode.html)** for more details about multi-node training and Ray debugger.
+See the **[official veRL documentation](https://verl.readthedocs.io/en/latest/start/multinode.html)** for more details about multi-node training and the Ray debugger.
 
 ## Other Baselines
 
-We also reproduced the following two baselines of the [R1-V](https://github.com/deep-agent/R1-V) project.
-- [CLEVR-70k-Counting](examples/baselines/qwen2_5_vl_3b_clevr.sh): Train the Qwen2.5-VL-3B-Instruct model on counting problem.
-- [GeoQA-8k](examples/baselines/qwen2_5_vl_3b_geoqa8k.sh): Train the Qwen2.5-VL-3B-Instruct model on GeoQA problem.
+Upstream EasyR1 also reproduces the following two baselines from the [R1-V](https://github.com/deep-agent/R1-V) project.
+
+- [CLEVR-70k-Counting](https://github.com/hiyouga/EasyR1/blob/main/examples/baselines/qwen2_5_vl_3b_clevr.sh): Train the Qwen2.5-VL-3B-Instruct model on counting problems.
+- [GeoQA-8k](https://github.com/hiyouga/EasyR1/blob/main/examples/baselines/qwen2_5_vl_3b_geoqa8k.sh): Train the Qwen2.5-VL-3B-Instruct model on GeoQA problems.
 
 ## Performance Baselines
 
-See [baselines.md](assets/baselines.md).
+See the upstream [baselines.md](https://github.com/hiyouga/EasyR1/blob/main/assets/baselines.md).
 
 ## Awesome Work using EasyR1
 
@@ -191,7 +192,7 @@ See [baselines.md](assets/baselines.md).
 
 ### Known bugs
 
-These features are temporarily disabled for now, we plan to fix them one-by-one in the future updates.
+These features are temporarily disabled. We plan to fix them one by one in future updates.
 
 - Vision language models are not compatible with ulysses parallelism yet.
 
@@ -222,13 +223,13 @@ We also thank Guangming Sheng and Chi Zhang for helpful discussions.
 ```bibtex
 @misc{zheng2025easyr1,
   title        = {EasyR1: An Efficient, Scalable, Multi-Modality RL Training Framework},
-  author       = {Yaowei Zheng, Junting Lu, Shenzhi Wang, Zhangchi Feng, Dongdong Kuang, Yuwen Xiong},
+  author       = {Yaowei Zheng and Junting Lu and Shenzhi Wang and Zhangchi Feng and Dongdong Kuang and Yuwen Xiong},
   howpublished = {\url{https://github.com/hiyouga/EasyR1}},
   year         = {2025}
 }
 ```
 
-We recommend to also cite the original work.
+We also recommend citing the original work.
 
 ```bibtex
 @article{sheng2024hybridflow,

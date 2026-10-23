@@ -10,17 +10,19 @@
 
 ## Generalized CycleGRPO: images and videos
 
-The video extension, **Generalized CycleGRPO for Fine-Grained Multimodal
-Understanding and Grounding**, adds temporal intervals and spatio-temporal
-timestamped regions to the region--text--region cycle.
+The follow-up paper, **Generalized CycleGRPO for Fine-Grained Multimodal
+Understanding and Grounding**, extends the image region–text–region cycle to
+video intervals and timestamped spatial evidence.
 
+- [Generalized CycleGRPO paper](https://arxiv.org/html/2610.29552v1)
 - [Generalized project page](https://devinxzhang.github.io/Generalized-CycleGRPO-Page/)
 - [Video training, data preparation, and checkpoint instructions](generalized/README.md)
-- Training entry: `bash generalized/train.sh temporal_qwen`,
-  `temporal_omtg`, or `openo3_mixed`, with the corresponding model/data paths.
+- Training entry: `bash generalized/train.sh <profile>`, where `<profile>` is
+  `temporal_qwen`, `temporal_omtg`, or `openo3_mixed`. Set the corresponding
+  model and data paths first.
 
-The existing image release and commands below remain unchanged. The Models
-badge above links to the ECCV **spatial** model. The video releases are:
+The image release and its commands appear below. The Models badge above links
+to the ECCV **spatial** model. The video releases are:
 
 | Model | Hugging Face |
 |---|---|
@@ -35,14 +37,14 @@ initialization described in the video documentation, not these final models.
 
 **Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO**
 
-Official implementation of **CycleGRPO** for jointly improving region
-captioning and referring localization with multimodal reinforcement learning.
-CycleGRPO uses a
-**caption ↔ grounding cycle-consistency** reward. The policy is a Qwen3-VL-4B
-that emits **mask tokens** decoded by a VQ-SAM2 mask tokenizer; the reward runs
+This repository provides the official implementation of **CycleGRPO** for
+jointly improving region captioning and referring localization with multimodal
+reinforcement learning. CycleGRPO uses a **caption ↔ grounding cycle-consistency**
+reward. The policy is a Qwen3-VL-4B model that emits **mask tokens** decoded by
+a VQ-SAM2 mask tokenizer; the reward runs
 an inner grounding rollout conditioned on the model's own caption and scores it
 by mask IoU — so captions are optimized to be **distinctive and
-locatable**, with no caption ground-truth needed in the RL stage.
+locatable**, without requiring caption ground truth during RL.
 
 > Built on [EasyR1](https://github.com/hiyouga/EasyR1) /
 > [veRL](https://github.com/volcengine/verl) (see `README_EasyR1.md` for the
@@ -88,8 +90,8 @@ Configure the public training launcher with the following paths:
   [`zhouyik/Qwen3-VL-4B-SAMTok-co`](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co).
 - **`DATA_DIR`** — directory holding the RL `*.parquet` files. Build them
   with the scripts in `projects/rl/datasets/` (e.g. `prepare_dw_rl_dataset.py`,
-  `prepare_gres_no_target_rl_dataset.py`). A training mix typically combines
-  dense-region (denseworld) + no-target (gres) parquets.
+  `prepare_gres_no_target_rl_dataset.py`). A typical training mix combines
+  DenseWorld region samples with GRES no-target samples.
 - **`<PATH_TO_COCO2014>`** — COCO2014 `train2014/` images, used only by the
   gres/groundingsuite **eval** scripts.
 - **`<PATH_TO_GAR_BENCH>`** — GAR-Bench annotations directory (holds
@@ -117,9 +119,9 @@ starting. `WANDB_API_KEY` is optional and `WANDB_MODE` defaults to `offline`.
 
 ### Memory tuning (multi-image / OOM)
 
-Multi-image samples produce long prompts; the actor backward can OOM. The main
-script has a commented block of levers — append them to the `python3 -m
-verl.trainer.main` command as needed:
+Multi-image samples produce long prompts; the actor backward pass can run out
+of memory. The main script has a commented block of options. Add them to the
+`python3 -m verl.trainer.main` command as needed:
 
 - `data.max_prompt_length` / `worker.rollout.max_num_batched_tokens` — raise to fit long prompts (costs memory).
 - `worker.actor.micro_batch_size_per_device_for_{experience,update}=1` — smallest micro-batch.
@@ -130,7 +132,7 @@ verl.trainer.main` command as needed:
 ## Inference / evaluation
 
 Each benchmark lives under `evaluation/<benchmark>/`. The multi-GPU launchers
-shard the dataset across GPUs and auto-merge:
+shard the dataset across GPUs and save one JSON result per sample:
 
 ```bash
 # Referring segmentation (GRES)
@@ -153,14 +155,15 @@ python evaluation/dlc_bench/eval_llama_without_image.py \
 
 Fill the dataset placeholders inside the eval scripts where noted:
 `<PATH_TO_COCO2014>` (gres / groundingsuite) and `<PATH_TO_GAR_BENCH>` (gar).
-bbox-format generalization variants live in `evaluation/bbox/`.
+Bounding-box generalization variants live in `evaluation/bbox/`.
 
 ## Results
 
-Base **[SAMTok](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok)** (Qwen3-VL-4B) vs **CycleGRPO** (this work). Two CycleGRPO rows are
-reported: **paper** = the numbers in the ECCV 2026 paper, and **release** = the
-public checkpoint [`XinNUS/CycleGRPO-4B`](https://huggingface.co/XinNUS/CycleGRPO-4B),
-a re-run that varies slightly from the paper (overall on par / marginally higher).
+Base **[SAMTok](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok)** (Qwen3-VL-4B)
+versus **CycleGRPO** (this work). Two CycleGRPO rows are reported: **paper**
+shows the numbers in the ECCV 2026 paper, and **release** shows results from
+the public checkpoint [`XinNUS/CycleGRPO-4B`](https://huggingface.co/XinNUS/CycleGRPO-4B).
+The release comes from a rerun and has similar or slightly higher overall scores.
 
 **Region captioning — DLC-Bench** (100 samples):
 
@@ -204,6 +207,8 @@ a re-run that varies slightly from the paper (overall on par / marginally higher
 
 ## Citation
 
+For the spatial CycleGRPO model, cite the ECCV paper:
+
 ```bibtex
 @inproceedings{cyclegrpo2026,
   title     = {Actor as Its Own Critic: Unifying Region Understanding and
@@ -212,6 +217,20 @@ a re-run that varies slightly from the paper (overall on par / marginally higher
                and Li, Xiangtai and Tan, Robby T.},
   booktitle = {European Conference on Computer Vision (ECCV)},
   year      = {2026}
+}
+```
+
+For the generalized image and video framework, cite the arXiv preprint:
+
+```bibtex
+@misc{zhang2026generalizedcyclegrpo,
+  title         = {Generalized CycleGRPO for Fine-Grained Multimodal Understanding and Grounding},
+  author        = {Zhang, Xin and Wang, Haochen and Lin, Beibei and Zhang, Zhaoxiang and Tan, Robby T. and Li, Jason and Tao, Dacheng},
+  year          = {2026},
+  eprint        = {2610.29552},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  url           = {https://arxiv.org/abs/2610.29552}
 }
 ```
 

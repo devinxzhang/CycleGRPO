@@ -1,8 +1,7 @@
 #!/bin/bash
 # Multi-GPU launcher for qwen3vl_gcg_eval.py (Grounded Caption Generation).
 # Data-parallel: shard the image folder across N GPUs, one process per GPU.
-# Per-image JSON outputs => shards never collide and re-running resumes
-# (the dataset filters out already-evaluated images at startup).
+# Per-image JSON outputs => shards never collide and re-running resumes.
 #
 # Usage:
 #   bash run_gcg_multigpu.sh [NUM_GPUS] [MODEL_PATH] [SAVE_DIR]
@@ -15,8 +14,9 @@ MODEL_PATH=${2:-zhouyik/Qwen3-VL-4B-SAMTok-co}
 SAVE_DIR=${3:-./results/gcg/}
 VQ_SAM2_PATH=${VQ_SAM2_PATH:-Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth}
 SAM2_PATH=${SAM2_PATH:-Qwen/sam2.1_hiera_large.pt}
-# image folder hardcoded in the script (IMAGE_FOLDER); keep in sync for the monitor:
+# Image folder is passed through to the inference script and verifier.
 IMAGE_FOLDER=${IMAGE_FOLDER:-<PATH_TO_DATA>/Sa2VA-Training/glamm_data/images/grandf/val_test}
+export IMAGE_FOLDER
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EVAL="$SCRIPT_DIR/qwen3vl_gcg_eval.py"
@@ -67,4 +67,10 @@ rc=0
 for p in "${pids[@]}"; do wait "$p" || rc=1; done
 done=$(find "$SAVE_DIR" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l)
 echo "All shards finished (rc=$rc). $done/$TOTAL outputs in $SAVE_DIR"
+if ! python3 "$SCRIPT_DIR/gcg_result_store.py" \
+    --image_folder "$IMAGE_FOLDER" --save_dir "$SAVE_DIR" \
+    --model_path "$MODEL_PATH" --vq_sam2_path "$VQ_SAM2_PATH" \
+    --sam2_path "$SAM2_PATH" --require_complete; then
+    rc=1
+fi
 exit $rc

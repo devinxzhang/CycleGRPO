@@ -152,17 +152,20 @@ def compute_gae_advantage_return(
             shape: (bs, response_length)
 
     """
-    nextvalues = 0
-    lastgaelam = 0
+    nextvalues = torch.zeros_like(values[:, 0])
+    lastgaelam = torch.zeros_like(values[:, 0])
     advantages_reversed = []
     gen_len = token_level_rewards.shape[-1]
     for t in reversed(range(gen_len)):
         delta = token_level_rewards[:, t] + gamma * nextvalues - values[:, t]
         gaelam = delta + gamma * lam * lastgaelam
 
-        if response_mask[:, t]:  # skip values and TD-error on observation tokens
-            nextvalues = values[:, t]
-            lastgaelam = gaelam
+        # Each response can end at a different position. Reset the recurrence
+        # independently for padded tokens instead of treating a batch mask as a
+        # single boolean value.
+        valid = response_mask[:, t].bool()
+        nextvalues = torch.where(valid, values[:, t], torch.zeros_like(nextvalues))
+        lastgaelam = torch.where(valid, gaelam, torch.zeros_like(lastgaelam))
 
         advantages_reversed.append(lastgaelam)
 
