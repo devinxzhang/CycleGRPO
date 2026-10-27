@@ -1,8 +1,6 @@
 data:
-  train_files:
-    - ./zhouyik/ver4k_train.parquet
-  val_files: 
-    - ./zhouyik/ver4k_train.parquet
+  train_files: []  # set by projects/rl/qwen3vl_4b_mt.sh
+  val_files: []  # optional; cycle-aware validation is not implemented yet
   cap_prompt_key: cap_problem
   cap_answer_key: cap_answer
   seg_prompt_key: seg_problem

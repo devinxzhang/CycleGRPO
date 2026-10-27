@@ -228,7 +228,7 @@ class RayPPOTrainer:
         tokenizer: PreTrainedTokenizer,
         processor: Optional[ProcessorMixin],
         train_dataloader: StatefulDataLoader,
-        val_dataloader: StatefulDataLoader,
+        val_dataloader: Optional[StatefulDataLoader],
         role_worker_mapping: dict[Role, Type[Worker]],
         resource_pool_manager: ResourcePoolManager,
         ray_worker_group_cls: Type[RayWorkerGroup] = RayWorkerGroup,

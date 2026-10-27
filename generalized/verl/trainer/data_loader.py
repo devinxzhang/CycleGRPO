@@ -23,7 +23,9 @@ from ..utils.dataset import RLHFDataset, collate_fn
 from .config import DataConfig
 
 
-def create_dataloader(config: DataConfig, tokenizer: PreTrainedTokenizer, processor: Optional[ProcessorMixin]) -> None:
+def create_dataloader(
+    config: DataConfig, tokenizer: PreTrainedTokenizer, processor: Optional[ProcessorMixin]
+) -> tuple[StatefulDataLoader, Optional[StatefulDataLoader]]:
     train_dataset = RLHFDataset(
         data_path=config.train_files,
         tokenizer=tokenizer,
@@ -94,6 +96,12 @@ def create_dataloader(config: DataConfig, tokenizer: PreTrainedTokenizer, proces
         drop_last=True,
     )
 
+    assert len(train_dataloader) >= 1
+    print(f"Size of train dataloader: {len(train_dataloader)}")
+    if not config.val_files:
+        print("No data.val_files given; validation dataloader is disabled.")
+        return train_dataloader, None
+
     val_dataset = RLHFDataset(
         data_path=config.val_files,
         tokenizer=tokenizer,
@@ -129,8 +137,6 @@ def create_dataloader(config: DataConfig, tokenizer: PreTrainedTokenizer, proces
         drop_last=False,
     )
 
-    assert len(train_dataloader) >= 1
     assert len(val_dataloader) >= 1
-    print(f"Size of train dataloader: {len(train_dataloader)}")
     print(f"Size of val dataloader: {len(val_dataloader)}")
     return train_dataloader, val_dataloader

@@ -63,13 +63,17 @@ fi
 if [[ -n "${LOAD_CHECKPOINT_PATH:-}" ]]; then
   EXTRA_ARGS+=(trainer.load_checkpoint_path="$LOAD_CHECKPOINT_PATH")
 fi
+if [[ -n "${VAL_FILE:-}" ]]; then
+  EXTRA_ARGS+=(data.val_files="['${VAL_FILE}']")
+else
+  EXTRA_ARGS+=(data.val_files=[])
+fi
 if [[ -n "${MAX_STEPS:-}" ]]; then
   EXTRA_ARGS+=(trainer.max_steps="$MAX_STEPS")
 fi
 python3 -m generalized.verl.trainer.main \
   config=generalized/config.yaml \
   data.train_files="['${TRAIN_FILE}']" \
-  data.val_files="['${VAL_FILE:-$TRAIN_FILE}']" \
   data.region_format="${REGION_FORMAT:-$DEFAULT_FORMAT}" \
   data.video_fps="${VIDEO_FPS:-$DEFAULT_FPS}" \
   data.min_pixels="$MIN_PIXELS" \
