@@ -4,8 +4,8 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 
 def load_cases(dataset_path):
@@ -26,8 +26,10 @@ def _resource_identity(value):
     files = [path] if path.is_file() else sorted(p for p in path.rglob("*") if p.is_file())
     return {
         "path": str(path),
-        "files": [(str(p.relative_to(path)) if path.is_dir() else p.name,
-                   p.stat().st_size, p.stat().st_mtime_ns) for p in files],
+        "files": [
+            (str(p.relative_to(path)) if path.is_dir() else p.name, p.stat().st_size, p.stat().st_mtime_ns)
+            for p in files
+        ],
     }
 
 
@@ -57,8 +59,12 @@ def load_current_result(save_dir, case, run_id):
     if not isinstance(result, dict) or result.get("run_id") != run_id or result.get("idx") != case["idx"]:
         return None
     mask = result.get("predicted_segmentation")
-    if (not isinstance(mask, dict) or not isinstance(mask.get("counts"), str)
-            or not isinstance(mask.get("size"), list) or len(mask["size"]) != 2):
+    if (
+        not isinstance(mask, dict)
+        or not isinstance(mask.get("counts"), str)
+        or not isinstance(mask.get("size"), list)
+        or len(mask["size"]) != 2
+    ):
         return None
     return result
 
@@ -72,9 +78,9 @@ def save_result(save_dir, run_id, model_path, prediction):
     record = dict(prediction, run_id=run_id, model_path=model_path)
     temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=save_dir,
-                                         prefix=f".{prediction['idx']}.", suffix=".tmp",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=save_dir, prefix=f".{prediction['idx']}.", suffix=".tmp", delete=False
+        ) as f:
             temp_path = f.name
             json.dump(record, f)
         os.replace(temp_path, result_path(save_dir, prediction["idx"]))

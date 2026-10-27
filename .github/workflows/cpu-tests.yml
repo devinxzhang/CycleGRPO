@@ -1,0 +1,24 @@
+name: cpu-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements-test.txt
+          uv pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+      - name: make check
+        run: |
+          source .venv/bin/activate
+          make check
