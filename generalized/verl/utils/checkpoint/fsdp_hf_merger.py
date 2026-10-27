@@ -155,3 +155,15 @@ def merge_fsdp_actor_to_hf(
         if temporary.exists():
             shutil.rmtree(temporary)
         raise
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Merge an FSDP actor checkpoint (global_step_*/actor) into a HF model.")
+    parser.add_argument("actor_dir", help="e.g. checkpoints/<project>/<experiment>/global_step_190/actor")
+    parser.add_argument("output_dir", help="new directory for the merged HF checkpoint, e.g. .../ckpt_190")
+    parser.add_argument("--max_shard_gb", type=float, default=4.0)
+    args = parser.parse_args()
+    tensors, size = merge_fsdp_actor_to_hf(args.actor_dir, args.output_dir, max_shard_gb=args.max_shard_gb)
+    print(f"Merged {tensors} tensors ({size / 1024**3:.2f} GiB) -> {args.output_dir}")

@@ -27,7 +27,28 @@ hf download zhouyik/Qwen3-VL-4B-SAMTok-co \
 
 ## 3. Prepare RL data
 
-Training reads two parquet files from `DATA_DIR`:
+### Released data (recommended)
+
+[XinNUS/CycleGRPO-RL-Data](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data)
+contains the exact parquets and zoom-in crops used to train
+[CycleGRPO-4B](https://huggingface.co/XinNUS/CycleGRPO-4B). V3Det and COCO
+images are not redistributed; download them from the official sources and
+let `prepare_images.py` link the ones that are used:
+
+```bash
+hf download XinNUS/CycleGRPO-RL-Data --repo-type dataset --local-dir data/CycleGRPO-RL-Data
+cd data/CycleGRPO-RL-Data
+tar -xf images/crops.tar
+python prepare_images.py --v3det_images /path/to/V3Det/images --coco_train2014 /path/to/coco/train2014
+cd -
+```
+
+Then train as in section 5. Sections 3.1-3.3 describe how to build
+equivalent data from your own annotations.
+
+### Building your own data
+
+By default the launcher reads two parquet files from `DATA_DIR`:
 
 ```text
 data/cyclegrpo/
@@ -133,9 +154,12 @@ WANDB_MODE=offline \
 bash projects/rl/qwen3vl_4b_mt.sh
 ```
 
-Optional overrides:
+Optional overrides (`TRAIN_FILES` is a comma-separated parquet list that replaces
+the two `DATA_DIR` files; `IMAGE_DIR` is the base for relative image paths):
 
 ```bash
+TRAIN_FILES=/data/a.parquet,/data/b.parquet \
+IMAGE_DIR=/path/to/images \
 MASK_TOKENIZER_PATH=/path/to/mask_tokenizer_256x2.pth \
 SAM2_PATH=/path/to/sam2.1_hiera_large.pt \
 MODEL_PATH=/path/to/co_sft_checkpoint \
@@ -158,3 +182,50 @@ Each run saves `resolved_config.yaml` in its checkpoint directory. Resuming
 with a `trainer.load_checkpoint_path` that does not exist is an error.
 Memory-related overrides are listed at the bottom of
 `projects/rl/qwen3vl_4b_mt.sh`.
+
+## 5. Reproduce CycleGRPO-4B
+
+The released checkpoint came from three consecutive runs on the released data
+(full lineage and settings in the
+[dataset card](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data)). It
+starts from `zhouyik/Qwen3-VL-4B-SAMTok`, not from the co-SFT snapshot of
+section 2. Each stage after the first starts from the previous stage's last
+checkpoint, merged to Hugging Face format:
+
+```bash
+D=data/CycleGRPO-RL-Data
+SAMTOK=checkpoints/Qwen3-VL-4B-SAMTok
+hf download zhouyik/Qwen3-VL-4B-SAMTok --local-dir $SAMTOK
+export IMAGE_DIR=$D MASK_TOKENIZER_PATH=$SAMTOK/mask_tokenizer_256x2.pth SAM2_PATH=$SAMTOK/sam2.1_hiera_large.pt
+CKPT=checkpoints/mask_tokenizer_grpo
+MERGE="python -m generalized.verl.utils.checkpoint.fsdp_hf_merger"
+
+# Stage 1: 5 epochs over 4,941 multi-region samples = 190 steps, 1 node x 8 GPUs.
+MODEL_PATH=$SAMTOK TRAIN_FILES=$D/data/denseworld_multi_4941.parquet \
+  bash projects/rl/qwen3vl_4b_mt.sh trainer.experiment_name=stage1 \
+  worker.rollout.n=6 trainer.total_epochs=5
+$MERGE $CKPT/stage1/global_step_190/actor $CKPT/stage1/ckpt_190
+
+# Stage 2: 40 steps, 2 nodes x 8 GPUs (start a 2-node Ray cluster first).
+MODEL_PATH=$CKPT/stage1/ckpt_190 \
+TRAIN_FILES=$D/data/denseworld_multi_4941.parquet,$D/data/denseworld_multi_4920.parquet,$D/data/gres_no_target_1000.parquet \
+  bash projects/rl/qwen3vl_4b_mt.sh trainer.experiment_name=stage2 trainer.nnodes=2 \
+  trainer.max_steps=40 data.max_pixels=262144 data.mini_rollout_batch_size=16 \
+  worker.actor.micro_batch_size_per_device_for_experience=1 \
+  worker.ref.micro_batch_size_per_device_for_experience=1 trainer.max_try_make_batch=64
+$MERGE $CKPT/stage2/global_step_40/actor $CKPT/stage2/ckpt_40
+
+# Stage 3: the release is the checkpoint after step 1 of a 30-step schedule.
+MODEL_PATH=$CKPT/stage2/ckpt_40 \
+TRAIN_FILES=$D/data/denseworld_single_21219.parquet,$D/data/gres_no_target_14665.parquet \
+  bash projects/rl/qwen3vl_4b_mt.sh trainer.experiment_name=stage3 trainer.nnodes=2 \
+  trainer.max_steps=30 trainer.save_freq=1 worker.actor.optim.lr=2e-6 data.seed=12 \
+  data.mini_rollout_batch_size=16 \
+  worker.actor.micro_batch_size_per_device_for_experience=1 \
+  worker.ref.micro_batch_size_per_device_for_experience=1 trainer.max_try_make_batch=64
+$MERGE $CKPT/stage3/global_step_1/actor $CKPT/stage3/ckpt_1
+```
+
+The merger writes the weights in the dtype stored by FSDP (fp32), about twice
+the size of the bf16 release. RL sampling is stochastic, so a rerun matches the
+release in setup, not bit for bit.

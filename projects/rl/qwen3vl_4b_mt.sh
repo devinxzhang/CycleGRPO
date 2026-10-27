@@ -18,10 +18,14 @@ MODEL_PATH="${MODEL_PATH:-./checkpoints/Qwen3-VL-4B-SAMTok-co}"
 DATA_DIR="${DATA_DIR:-./data/cyclegrpo}"
 MASK_TOKENIZER_PATH="${MASK_TOKENIZER_PATH:-${MODEL_PATH}/mask_tokenizer_256x2.pth}"
 SAM2_PATH="${SAM2_PATH:-${MODEL_PATH}/sam2.1_hiera_large.pt}"
+# Comma-separated parquet list; defaults to the two files built in TRAIN.md.
+TRAIN_FILES="${TRAIN_FILES:-${DATA_DIR}/denseworld_train.parquet,${DATA_DIR}/gres_no_target_train.parquet}"
+IFS=',' read -r -a TRAIN_FILE_LIST <<< "${TRAIN_FILES}"
+# Base directory for relative image paths (e.g. the CycleGRPO-RL-Data checkout).
+IMAGE_DIR="${IMAGE_DIR:-}"
 
 for path in \
-    "${DATA_DIR}/denseworld_train.parquet" \
-    "${DATA_DIR}/gres_no_target_train.parquet" \
+    "${TRAIN_FILE_LIST[@]}" \
     "${MASK_TOKENIZER_PATH}" \
     "${SAM2_PATH}"; do
     if [[ ! -f "${path}" ]]; then
@@ -32,15 +36,22 @@ for path in \
 done
 
 # Validate parquet schema and the first rows (image paths, mask tokens).
-python3 projects/rl/datasets/check_rl_parquet.py \
-    "${DATA_DIR}/denseworld_train.parquet" "${DATA_DIR}/gres_no_target_train.parquet"
+CHECK_ARGS=()
+DATA_ARGS=()
+if [[ -n "${IMAGE_DIR}" ]]; then
+    CHECK_ARGS+=(--image_dir "${IMAGE_DIR}")
+    DATA_ARGS+=(data.image_dir="${IMAGE_DIR}")
+fi
+python3 projects/rl/datasets/check_rl_parquet.py "${CHECK_ARGS[@]}" "${TRAIN_FILE_LIST[@]}"
+TRAIN_FILES_ARG="[$(printf "'%s'," "${TRAIN_FILE_LIST[@]}" | sed 's/,$//')]"
 
 # DRY_RUN=1 resolves the full config (including appended overrides), prints it, and exits before Ray.
 ENTRYPOINT=verl.trainer.main
 [[ "${DRY_RUN:-0}" == 1 ]] && ENTRYPOINT=verl.trainer.resolve_config
 python3 -m "${ENTRYPOINT}" \
     config=projects/rl/config.yaml \
-    data.train_files="['${DATA_DIR}/denseworld_train.parquet', '${DATA_DIR}/gres_no_target_train.parquet']" \
+    data.train_files="${TRAIN_FILES_ARG}" \
+    "${DATA_ARGS[@]}" \
     data.val_files=[] \
     data.format_prompt=./projects/rl/format_prompt/non_thinking.jinja \
     data.region_format=mask_token \
