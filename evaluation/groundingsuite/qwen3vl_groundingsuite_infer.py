@@ -2,6 +2,7 @@ import argparse
 import copy
 import math
 import os
+import sys
 import time
 import torch
 import torchvision
@@ -21,6 +22,8 @@ from qwen_vl_utils import process_vision_info
 from torchvision.transforms.functional import to_pil_image
 
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from input_checks import require_inputs  # noqa: E402
 
 class DirectResize:
     def __init__(self, target_length: int) -> None:
@@ -42,11 +45,11 @@ def parse_args():
         help='hf model path.')
     parser.add_argument(
         '--vq_sam2_path',
-        default="Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth",
         help='vq-sam2 model path.')
     parser.add_argument(
         '--sam2_path',
-        default="Qwen/sam2.1_hiera_large.pt",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/sam2.1_hiera_large.pt",
         help='sam2 model path.')
     parser.add_argument(
         '--save_dir',
@@ -55,7 +58,14 @@ def parse_args():
     parser.add_argument(
         '--dataset',
         default='./data/GroundingSuiteEval/GroundingSuite-Eval.jsonl',
-        help='Specify a ref dataset')
+        help='GroundingSuite-Eval.jsonl')
+    parser.add_argument(
+        '--image_root',
+        default=None,
+        help='Directory containing the image_path entries (unlabeled2017/...). '
+             'Default: the directory of --dataset.')
+    parser.add_argument('--check_only', '--check-only', action='store_true',
+                        help='Validate input paths and exit without loading the model.')
     parser.add_argument('--task_id', '--task-id', type=int, default=0,
                         help='Shard index for this process (0 .. num_tasks-1).')
     parser.add_argument('--num_tasks', '--num-tasks', type=int, default=1,
@@ -204,6 +214,17 @@ def maybe_merge(all_data_dict, args):
 
 def main():
     args = parse_args()
+    if args.image_root is None:
+        args.image_root = os.path.dirname(os.path.abspath(args.dataset))
+    require_inputs([
+        ('--dataset', args.dataset, 'file'),
+        ('--image_root', args.image_root, 'dir'),
+        ('--vq_sam2_path', args.vq_sam2_path, 'file'),
+        ('--sam2_path', args.sam2_path, 'file'),
+    ])
+    if args.check_only:
+        print('GroundingSuite inputs OK')
+        return
 
     # ---- multi-GPU data parallelism: bind this process to one GPU ----
     gpu_id = args.task_id if args.gpu_id < 0 else args.gpu_id
@@ -267,10 +288,7 @@ def main():
         caption = data_dict['caption']
         class_id = data_dict['class_id']
 
-        image_path = os.path.join('./data/GroundingSuiteEval', image_file)
-        # Replace path for coco images
-        # image_path = image_path.replace('data/ref_seg/grefs/coco2014/train2014', 'data/coco/train2014')
-        image_path = image_path.replace('./data/ref_seg/grefs/coco2014/train2014', '<PATH_TO_COCO2014>/train2014')
+        image_path = os.path.join(args.image_root, image_file)
     
         try:
             image = load_image_with_retry(image_path)

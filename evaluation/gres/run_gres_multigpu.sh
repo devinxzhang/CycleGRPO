@@ -13,29 +13,30 @@ set -u
 NUM_GPUS=${1:-8}
 MODEL_PATH=${2:-zhouyik/Qwen3-VL-4B-SAMTok-co}
 SAVE_DIR=${3:-./results/grefcoco/}
-VQ_SAM2_PATH=${VQ_SAM2_PATH:-Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth}
-SAM2_PATH=${SAM2_PATH:-Qwen/sam2.1_hiera_large.pt}
+VQ_SAM2_PATH=${VQ_SAM2_PATH:-./checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth}
+SAM2_PATH=${SAM2_PATH:-./checkpoints/Qwen3-VL-4B-SAMTok-co/sam2.1_hiera_large.pt}
+# Directory holding COCO train2014/; empty keeps the image paths stored in DATASET.
+COCO_ROOT=${COCO_ROOT:-}
 DATASET=${DATASET:-./data/PaDT-MLLM/RefCOCO/grefcoco_val.json}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EVAL="$SCRIPT_DIR/qwen3vl_gres_eval.py"
 
-# The eval script hardcodes paths relative to the MaskTokenizer repo root
-# (./data/..., ./results/...). Run from there regardless of caller cwd.
+# Relative paths (./data, ./checkpoints, ./results) resolve from the repo root.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 echo "repo root: $REPO_ROOT"
 mkdir -p "$SAVE_DIR" logs
 
+COMMON_ARGS=(--model_path "$MODEL_PATH" --vq_sam2_path "$VQ_SAM2_PATH" --sam2_path "$SAM2_PATH"
+             --dataset "$DATASET" --save_dir "$SAVE_DIR")
+[[ -n "$COCO_ROOT" ]] && COMMON_ARGS+=(--coco_root "$COCO_ROOT")
+python "$EVAL" "${COMMON_ARGS[@]}" --check_only || exit 1
+
 echo "Launching $NUM_GPUS shards | model=$MODEL_PATH | save=$SAVE_DIR"
 pids=()
 for ((t=0; t<NUM_GPUS; t++)); do
-    CUDA_VISIBLE_DEVICES=$t python "$EVAL" \
-        --model_path "$MODEL_PATH" \
-        --vq_sam2_path "$VQ_SAM2_PATH" \
-        --sam2_path "$SAM2_PATH" \
-        --dataset "$DATASET" \
-        --save_dir "$SAVE_DIR" \
+    CUDA_VISIBLE_DEVICES=$t python "$EVAL" "${COMMON_ARGS[@]}" \
         --task_id "$t" --num_tasks "$NUM_GPUS" --gpu_id 0 \
         > "logs/gres_shard${t}.log" 2>&1 &
     pids+=($!)

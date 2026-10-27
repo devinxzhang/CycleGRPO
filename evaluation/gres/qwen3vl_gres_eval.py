@@ -2,6 +2,7 @@ import argparse
 import copy
 import math
 import os
+import sys
 import time
 import torch
 import torchvision
@@ -24,6 +25,8 @@ from torchvision.transforms.functional import to_pil_image
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
 
 from projects.vlm.tokenmask.evaluation.grefer import G_REFER
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from input_checks import require_inputs  # noqa: E402
 from result_store import (count_current_results, load_cases, load_current_result,
                           make_run_id, save_result)
 
@@ -39,8 +42,20 @@ class DirectResize:
         img = to_pil_image(image, mode='RGB')
         return np.array(img.resize((self.target_length, self.target_length)))
 
-def load_dataset(split='val'):
-    refer_api = G_REFER('./data/ref_seg/grefs/coco2014/train2014', './data/ref_seg/grefs/grefs(unc).json', './data/ref_seg/grefs/instances.json')
+# Image prefix stored in the prepared grefcoco_*.json files; --coco_root replaces it.
+GREFS_COCO_PREFIX = './data/ref_seg/grefs/coco2014/train2014'
+
+
+def resolve_image_path(image_path, coco_root):
+    if coco_root and image_path.startswith(GREFS_COCO_PREFIX):
+        return os.path.join(coco_root, 'train2014', image_path[len(GREFS_COCO_PREFIX):].lstrip('/'))
+    return image_path
+
+
+def load_dataset(split, grefs_dir, out_path):
+    """Build grefcoco_<split>.json from the gRefCOCO release (grefs(unc).json + instances.json)."""
+    refer_api = G_REFER(GREFS_COCO_PREFIX, os.path.join(grefs_dir, 'grefs(unc).json'),
+                        os.path.join(grefs_dir, 'instances.json'))
     
     ref_ids_val = refer_api.getRefIds(split=split)
     images_ids_val = refer_api.getImgIds(ref_ids=ref_ids_val)
@@ -50,8 +65,7 @@ def load_dataset(split='val'):
     loaded_images = refer_api.loadImgs(image_ids=images_ids_val)
     for item in loaded_images:
         item = item.copy()
-        # item["file_name"] = os.path.join('./data/ref_seg/grefs/coco2014/train2014', item["file_name"])
-        item["file_name"] = os.path.join('<PATH_TO_COCO2014>/train2014', item["file_name"])
+        item["file_name"] = os.path.join(GREFS_COCO_PREFIX, item["file_name"])
 
         refer_seg_ds["images"].append(item)
     refer_seg_ds["annotations"] = refer_api.Anns  # anns_val
@@ -146,9 +160,10 @@ def load_dataset(split='val'):
                 "segmentation": rle,
             })
     
-    with open(f'./data/PaDT-MLLM/RefCOCO/grefcoco_{split}.json', 'w') as f:
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, 'w') as f:
         json.dump(all_items, f)
-    print(f"Saved at ./data/PaDT-MLLM/RefCOCO/grefcoco_{split}.json")
+    print(f"Saved {len(all_items)} cases at {out_path}")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='GRES')
@@ -158,11 +173,11 @@ def parse_args():
         help='hf model path.')
     parser.add_argument(
         '--vq_sam2_path',
-        default="Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth",
         help='vq-sam2 model path.')
     parser.add_argument(
         '--sam2_path',
-        default="Qwen/sam2.1_hiera_large.pt",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/sam2.1_hiera_large.pt",
         help='sam2 model path.')
     parser.add_argument(
         '--save_dir',
@@ -171,13 +186,24 @@ def parse_args():
     parser.add_argument(
         '--dataset',
         default='./data/PaDT-MLLM/RefCOCO/grefcoco_val.json',
-        help='Specify a ref dataset')
+        help='Prepared grefcoco_<split>.json')
+    parser.add_argument(
+        '--coco_root',
+        default=os.environ.get('COCO_ROOT'),
+        help='Directory containing COCO train2014/ (env: COCO_ROOT). '
+             'Default: use the image paths stored in --dataset as-is.')
+    parser.add_argument('--check_only', '--check-only', action='store_true',
+                        help='Validate input paths and exit without loading the model.')
     parser.add_argument('--task_id', '--task-id', type=int, default=0,
                         help='Shard index for this process (0 .. num_tasks-1).')
     parser.add_argument('--num_tasks', '--num-tasks', type=int, default=1,
                         help='Total number of shards / data-parallel processes (one per GPU).')
     parser.add_argument('--gpu_id', '--gpu-id', type=int, default=-1,
                         help='CUDA device to bind this process to. Default -1 => use task_id.')
+    parser.add_argument('--prepare_split', '--prepare-split', choices=['val', 'testA', 'testB'], default=None,
+                        help='Build --dataset from the gRefCOCO release for this split, then exit.')
+    parser.add_argument('--grefs_dir', '--grefs-dir', default='./data/ref_seg/grefs',
+                        help='Directory with grefs(unc).json and instances.json (used by --prepare_split).')
     parser.add_argument('--metric_only', '--metric-only', action='store_true',
                         help='Skip inference; just compute the metric over existing save_dir.')
     parser.add_argument('--verify_outputs', '--verify-outputs', action='store_true',
@@ -367,6 +393,15 @@ def maybe_metric(all_data_dict, args, run_id):
 def main():
     args = parse_args()
 
+    if args.prepare_split:
+        require_inputs([
+            ('grefs(unc).json', os.path.join(args.grefs_dir, 'grefs(unc).json'), 'file'),
+            ('instances.json', os.path.join(args.grefs_dir, 'instances.json'), 'file'),
+        ])
+        load_dataset(args.prepare_split, args.grefs_dir, args.dataset)
+        return args
+
+    require_inputs([('--dataset', args.dataset, 'file')])
     all_data_dict, dataset_bytes = load_cases(args.dataset)
     run_id = make_run_id(dataset_bytes, args.model_path, args.vq_sam2_path,
                          args.sam2_path)
@@ -381,6 +416,16 @@ def main():
     # metric-only: skip all model loading, just score existing predictions.
     if args.metric_only:
         metric(args, all_data_dict, run_id)
+        return args
+
+    first_image = resolve_image_path(all_data_dict[0]['image'], args.coco_root)
+    require_inputs([
+        ('COCO train2014 image (set --coco_root or COCO_ROOT)', first_image, 'file'),
+        ('--vq_sam2_path', args.vq_sam2_path, 'file'),
+        ('--sam2_path', args.sam2_path, 'file'),
+    ])
+    if args.check_only:
+        print('GRES inputs OK')
         return args
 
     # ---- multi-GPU data parallelism: bind this process to one GPU ----
@@ -430,8 +475,7 @@ def main():
     count = 0
     for data_dict in tqdm.tqdm(all_data_dict[_start_:_end_]):
         image_path = data_dict['image']
-        # image_path = image_path.replace('data/ref_seg/grefs/coco2014/train2014', 'data/coco/train2014')
-        image_path = image_path.replace('./data/ref_seg/grefs/coco2014/train2014', '<PATH_TO_COCO2014>/train2014')
+        image_path = resolve_image_path(image_path, args.coco_root)
         
         phrase = data_dict['phrase']
         rle = data_dict['segmentation']
@@ -568,5 +612,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # load_dataset('testB')
     main()
