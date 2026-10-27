@@ -25,21 +25,24 @@ def check_checkpoint(path):
 
 
 def check_data(path, profile):
-    table = pq.read_table(path)
-    if table.num_rows == 0:
+    # Only the footer and the source column are read; video rows can be large.
+    parquet = pq.ParquetFile(path)
+    num_rows = parquet.metadata.num_rows
+    if num_rows == 0:
         raise ValueError("Empty training parquet")
+    columns = set(parquet.schema_arrow.names)
     required = {"source", "cap_problem", "cap_answer", "seg_problem", "seg_answer", "videos"}
-    missing = required - set(table.column_names)
+    missing = required - columns
     if missing:
         raise ValueError(f"Missing parquet columns: {sorted(missing)}")
-    sources = set(table["source"].to_pylist())
+    sources = set(parquet.read(columns=["source"]).column("source").to_pylist())
     if profile.startswith("temporal_") and sources != {"tg_multi_merged"}:
         raise ValueError(f"Expected temporal cycle sources, got {sources}")
     if profile == "openo3_mixed":
         expected = {"dam_cyclegrpo", "tg_multi_merged", "stgr_cyclegrpo", "open_o3_understanding_grpo"}
-        if sources != expected or "sampling_weight" not in table.column_names:
+        if sources != expected or "sampling_weight" not in columns:
             raise ValueError("Open-o3 main recipe requires all three cycle routes, auxiliary QA, and sampling_weight")
-    return table.num_rows, sorted(sources)
+    return num_rows, sorted(sources)
 
 
 def main():

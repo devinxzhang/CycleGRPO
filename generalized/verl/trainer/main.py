@@ -25,6 +25,7 @@ from ..workers.reward import BatchFunctionRewardManager, SequentialFunctionRewar
 from .config import PPOConfig
 from .data_loader import create_dataloader
 from .ray_trainer import RayPPOTrainer, ResourcePoolManager, Role
+from .resolve_config import resolve_config, to_yaml
 
 
 # please make sure main_task is not scheduled on head
@@ -96,17 +97,10 @@ class Runner:
 
 
 def main():
-    cli_args = OmegaConf.from_cli()
-    default_config = OmegaConf.structured(PPOConfig())
-
-    if hasattr(cli_args, "config"):
-        config_path = cli_args.pop("config", None)
-        file_config = OmegaConf.load(config_path)
-        default_config = OmegaConf.merge(default_config, file_config)
-
-    ppo_config = OmegaConf.merge(default_config, cli_args)
-    ppo_config: PPOConfig = OmegaConf.to_object(ppo_config)
-    ppo_config.deep_post_init()
+    ppo_config = resolve_config(OmegaConf.from_cli())
+    os.makedirs(ppo_config.trainer.save_checkpoint_path, exist_ok=True)
+    with open(os.path.join(ppo_config.trainer.save_checkpoint_path, "resolved_config.yaml"), "w") as f:
+        f.write(to_yaml(ppo_config))
 
     if not ray.is_initialized():
         runtime_env = {

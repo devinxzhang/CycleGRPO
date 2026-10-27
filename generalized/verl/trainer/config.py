@@ -120,7 +120,7 @@ class TrainerConfig:
     """project name for logger"""
     experiment_name: str = "demo"
     """experiment name for logger"""
-    logger: Tuple[str] = ("console", "wandb")
+    logger: Tuple[str, ...] = ("console", "wandb")
     """logger type, support `console`, `mlflow`, `swanlab`, `tensorboard`, `wandb`"""
     nnodes: int = 1
     """number of nodes for training"""

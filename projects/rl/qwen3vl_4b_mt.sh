@@ -31,7 +31,14 @@ for path in \
     fi
 done
 
-python3 -m verl.trainer.main \
+# Validate parquet schema and the first rows (image paths, mask tokens).
+python3 projects/rl/datasets/check_rl_parquet.py \
+    "${DATA_DIR}/denseworld_train.parquet" "${DATA_DIR}/gres_no_target_train.parquet"
+
+# DRY_RUN=1 resolves the full config (including appended overrides), prints it, and exits before Ray.
+ENTRYPOINT=verl.trainer.main
+[[ "${DRY_RUN:-0}" == 1 ]] && ENTRYPOINT=verl.trainer.resolve_config
+python3 -m "${ENTRYPOINT}" \
     config=projects/rl/config.yaml \
     data.train_files="['${DATA_DIR}/denseworld_train.parquet', '${DATA_DIR}/gres_no_target_train.parquet']" \
     data.val_files=[] \
@@ -54,11 +61,14 @@ python3 -m verl.trainer.main \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=8 \
     data.rollout_batch_size=128 \
-    worker.actor.global_batch_size=128
+    worker.actor.global_batch_size=128 \
+    "$@"
 
-# ---- Optional tuning for large multi-image samples / OOM (append as needed) ----
+# ---- Optional tuning for large multi-image samples / OOM ----
+# Extra arguments to this script are appended as config overrides, e.g.
+#   bash projects/rl/qwen3vl_4b_mt.sh worker.actor.micro_batch_size_per_device_for_update=1
 # Long multi-image prompts make the actor backward memory-heavy. If you hit OOM,
-# add some of these (see README "Memory tuning"):
+# pass some of these (see README "Memory tuning"):
 #    data.max_prompt_length=24576 \
 #    worker.rollout.max_num_batched_tokens=32768 \
 #    data.mini_rollout_batch_size=16 \
