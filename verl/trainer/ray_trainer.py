@@ -379,12 +379,6 @@ class RayPPOTrainer:
             self.best_val_reward_score = self.val_reward_score
             self.best_global_step = self.global_step
 
-        remove_obsolete_ckpt(
-            self.config.trainer.save_checkpoint_path,
-            self.global_step,
-            self.best_global_step,
-            self.config.trainer.save_limit,
-        )
         folder_path = os.path.join(self.config.trainer.save_checkpoint_path, f"global_step_{self.global_step}")
         actor_path = os.path.join(folder_path, "actor")
         self.actor_rollout_ref_wg.save_checkpoint(actor_path, save_model_only=self.config.trainer.save_model_only)
@@ -404,8 +398,18 @@ class RayPPOTrainer:
             "last_actor_path": os.path.abspath(actor_path),
         }
         checkpointer_tracker_path = os.path.join(self.config.trainer.save_checkpoint_path, CHECKPOINT_TRACKER)
-        with open(checkpointer_tracker_path, "w") as f:
+        # Write-then-rename so an interrupted save never leaves a truncated tracker.
+        with open(checkpointer_tracker_path + ".tmp", "w") as f:
             json.dump(checkpointer_tracker_info, f, ensure_ascii=False, indent=2)
+        os.replace(checkpointer_tracker_path + ".tmp", checkpointer_tracker_path)
+
+        # Rotate old checkpoints only after the new one and its tracker are on disk.
+        remove_obsolete_ckpt(
+            self.config.trainer.save_checkpoint_path,
+            self.global_step,
+            self.best_global_step,
+            self.config.trainer.save_limit,
+        )
 
     def _load_checkpoint(self) -> None:
         if self.config.trainer.load_checkpoint_path is not None:

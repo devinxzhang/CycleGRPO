@@ -169,11 +169,10 @@ class TrainerConfig:
 
         self.save_checkpoint_path = os.path.abspath(self.save_checkpoint_path)  # ray job uses absolute path
         if self.load_checkpoint_path is not None:
-            if os.path.exists(self.load_checkpoint_path):  # ray job uses absolute path
-                self.load_checkpoint_path = os.path.abspath(self.load_checkpoint_path)
-            else:
-                print(f"Model checkpoint {self.load_checkpoint_path} not found.")
-                self.load_checkpoint_path = None
+            # An explicit resume path must exist; silently starting from scratch hides typos.
+            if not os.path.exists(self.load_checkpoint_path):
+                raise FileNotFoundError(f"trainer.load_checkpoint_path not found: {self.load_checkpoint_path}")
+            self.load_checkpoint_path = os.path.abspath(self.load_checkpoint_path)  # ray job uses absolute path
 
 
 @dataclass

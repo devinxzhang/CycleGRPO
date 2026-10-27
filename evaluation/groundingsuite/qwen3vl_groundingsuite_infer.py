@@ -24,6 +24,8 @@ from torchvision.transforms.functional import to_pil_image
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from input_checks import require_inputs  # noqa: E402
+from gs_result_store import (count_current_results, load_cases, load_current_result,  # noqa: E402
+                             make_run_id, save_result)
 
 class DirectResize:
     def __init__(self, target_length: int) -> None:
@@ -170,39 +172,21 @@ def fix_mt_format_comprehensive(text):
     text = re.sub(pattern_too_few_no_end, replacement_too_few_no_end, text)
     return text
 
-def maybe_merge(all_data_dict, args):
-    """Collate per-idx {idx}.json into one JSONL once EVERY sample is done.
+def maybe_merge(all_data_dict, args, run_id):
+    """Collate per-idx results into one JSONL once every sample has a current result.
 
-    Called by each shard at exit. Only fires when all expected files exist, so
-    the last shard to finish triggers it. Writes atomically (tmp + rename) so
-    concurrent triggers can't corrupt the output (result is identical anyway).
+    Called by each shard at exit, so the last shard to finish triggers it.
+    Results from another model, dataset, or weights (different run_id) do not
+    count. Writes atomically (tmp + rename) so concurrent triggers are safe.
     """
     if args.no_merge:
         return
     out_path = args.merge_out or (args.save_dir.rstrip("/") + "_pred.jsonl")
-    want = [d["idx"] for d in all_data_dict]
-    paths = [os.path.join(args.save_dir, f"{i}.json") for i in want]
-    if not all(os.path.exists(p) for p in paths):
-        n_done = sum(os.path.exists(p) for p in paths)
-        print(f"[task {args.task_id}] merge skipped: {n_done}/{len(want)} done, "
-              f"other shards still running.")
+    records = [load_current_result(args.save_dir, case, run_id) for case in all_data_dict]
+    n_done = sum(r is not None for r in records)
+    if n_done != len(all_data_dict):
+        print(f"[task {args.task_id}] merge skipped: {n_done}/{len(all_data_dict)} current results.")
         return
-
-    records = []
-    for p in paths:
-        try:
-            with open(p) as f:
-                records.append(json.load(f))
-        except Exception as e:  # noqa: BLE001
-            print(f"[merge] unreadable {p}: {e}")
-
-    def _key(r):
-        v = r.get("idx")
-        try:
-            return (0, int(v))
-        except (TypeError, ValueError):
-            return (1, str(v))
-    records.sort(key=_key)
 
     tmp_path = f"{out_path}.tmp.{os.getpid()}"
     with open(tmp_path, "w") as f:
@@ -225,6 +209,10 @@ def main():
     if args.check_only:
         print('GroundingSuite inputs OK')
         return
+    all_data_dict, dataset_bytes = load_cases(args.dataset)
+    run_id = make_run_id(dataset_bytes, args.model_path, args.vq_sam2_path, args.sam2_path)
+    print(f"run_id {run_id[:12]}: {count_current_results(args.save_dir, all_data_dict, run_id)}"
+          f"/{len(all_data_dict)} cases already done")
 
     # ---- multi-GPU data parallelism: bind this process to one GPU ----
     gpu_id = args.task_id if args.gpu_id < 0 else args.gpu_id
@@ -264,15 +252,6 @@ def main():
     # exist_ok=True: many shards may race to create the dir at once
     os.makedirs(args.save_dir, exist_ok=True)
 
-    all_data_dict = []
-    with open(args.dataset, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:  
-                continue
-            obj = json.loads(line) 
-            all_data_dict.append(obj)
-    
     rows = len(all_data_dict)
     # Data-parallel sharding across `num_tasks` processes (one per GPU).
     chunk_size = math.ceil(rows / args.num_tasks)
@@ -289,6 +268,8 @@ def main():
         class_id = data_dict['class_id']
 
         image_path = os.path.join(args.image_root, image_file)
+        if load_current_result(args.save_dir, data_dict, run_id) is not None:
+            continue
     
         try:
             image = load_image_with_retry(image_path)
@@ -298,10 +279,6 @@ def main():
         ori_width, ori_height = image.size
 
         question = f"Please carefully check the image and detect the object this sentence describes: {caption}"
-
-        if os.path.exists(f"{args.save_dir}/{item_idx}.json"):
-            print("file exists.............")
-            continue
 
         messages = [
             {
@@ -346,8 +323,7 @@ def main():
             zero_mask = mask_to_rle(zero_mask)[0]
             prediction = {'idx': item_idx, 'image_path': image_file, 'predicted_box': [0, 0, 0, 0], 'predicted_segmentation': zero_mask, 'class_id': class_id}
 
-            with open(f"{args.save_dir}/{item_idx}.json", 'w') as f:
-                json.dump(prediction, f)
+            save_result(args.save_dir, run_id, args.model_path, prediction)
             continue
 
         # if len(quant_ids) % CODEBOOK_DEPTH != 0:
@@ -361,8 +337,7 @@ def main():
             zero_mask = mask_to_rle(zero_mask)[0]
             prediction = {'idx': item_idx, 'image_path': image_file, 'predicted_box': [0, 0, 0, 0], 'predicted_segmentation': zero_mask, 'class_id': class_id}
 
-            with open(f"{args.save_dir}/{item_idx}.json", 'w') as f:
-                json.dump(prediction, f)
+            save_result(args.save_dir, run_id, args.model_path, prediction)
             continue
 
         batch_size = len(quant_ids) // CODEBOOK_DEPTH
@@ -397,8 +372,7 @@ def main():
             zero_mask = mask_to_rle(zero_mask)[0]
             prediction = {'idx': item_idx, 'image_path': image_file, 'predicted_box': [0, 0, 0, 0], 'predicted_segmentation': zero_mask, 'class_id': class_id}
 
-            with open(f"{args.save_dir}/{item_idx}.json", 'w') as f:
-                json.dump(prediction, f)
+            save_result(args.save_dir, run_id, args.model_path, prediction)
             continue
 
         _pred_masks = torch.nn.functional.interpolate(_pred_masks, size=(ori_height, ori_width), mode='bilinear')
@@ -412,11 +386,10 @@ def main():
             pred_box = [0, 0, 0, 0]
         _pred_masks = mask_to_rle(_pred_masks)[0]
         prediction = {'idx': item_idx, 'image_path': image_file, 'predicted_box': pred_box, 'predicted_segmentation': _pred_masks, 'class_id': class_id}
-        with open(f"{args.save_dir}/{item_idx}.json", 'w') as f:
-            json.dump(prediction, f)
+        save_result(args.save_dir, run_id, args.model_path, prediction)
 
     # once this shard is done, merge into one JSONL iff all shards have finished
-    maybe_merge(all_data_dict, args)
+    maybe_merge(all_data_dict, args, run_id)
 
 
 if __name__ == "__main__":
