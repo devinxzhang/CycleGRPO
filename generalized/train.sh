@@ -51,9 +51,11 @@ if [[ "$PROFILE" == temporal_omtg ]]; then
 fi
 
 python3 -m generalized.preflight --profile "$PROFILE"
+# With DRY_RUN=1, resolve the full config (including any Hydra overrides
+# passed below), print it, and exit before starting Ray.
+ENTRYPOINT=generalized.verl.trainer.main
 if [[ "${DRY_RUN:-0}" == 1 ]]; then
-  echo "Preflight passed; DRY_RUN=1, not starting training."
-  exit 0
+  ENTRYPOINT=generalized.verl.trainer.resolve_config
 fi
 
 EXTRA_ARGS=()
@@ -71,7 +73,7 @@ fi
 if [[ -n "${MAX_STEPS:-}" ]]; then
   EXTRA_ARGS+=(trainer.max_steps="$MAX_STEPS")
 fi
-python3 -m generalized.verl.trainer.main \
+python3 -m "$ENTRYPOINT" \
   config=generalized/config.yaml \
   data.train_files="['${TRAIN_FILE}']" \
   data.region_format="${REGION_FORMAT:-$DEFAULT_FORMAT}" \

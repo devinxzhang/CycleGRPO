@@ -13,7 +13,15 @@
 # limitations under the License.
 
 from .config import RewardConfig
-from .function import BatchFunctionRewardManager, FunctionRewardManager, SequentialFunctionRewardManager
 
 
 __all__ = ["BatchFunctionRewardManager", "FunctionRewardManager", "RewardConfig", "SequentialFunctionRewardManager"]
+
+
+def __getattr__(name):
+    # Reward managers import torch/transformers; load them only when used.
+    if name in ("BatchFunctionRewardManager", "FunctionRewardManager", "SequentialFunctionRewardManager"):
+        from . import function
+
+        return getattr(function, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

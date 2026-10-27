@@ -52,4 +52,5 @@ def test_public_launcher_dry_run(tmp_path, profile):
     result = subprocess.run(['bash', 'generalized/train.sh', profile], cwd=root,
                             env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
-    assert 'not starting training' in result.stdout
+    assert 'Configuration resolved; not starting Ray.' in result.stdout
+    assert f"model_path: {model}" in result.stdout

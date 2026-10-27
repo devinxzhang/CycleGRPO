@@ -120,8 +120,8 @@ starting. `WANDB_API_KEY` is optional and `WANDB_MODE` defaults to `offline`.
 ### Memory tuning (multi-image / OOM)
 
 Multi-image samples produce long prompts; the actor backward pass can run out
-of memory. The main script has a commented block of options. Add them to the
-`python3 -m verl.trainer.main` command as needed:
+of memory. Pass any of these as extra arguments to the launcher, e.g.
+`bash projects/rl/qwen3vl_4b_mt.sh data.mini_rollout_batch_size=16`:
 
 - `data.max_prompt_length` / `worker.rollout.max_num_batched_tokens` — raise to fit long prompts (costs memory).
 - `worker.actor.micro_batch_size_per_device_for_{experience,update}=1` — smallest micro-batch.
