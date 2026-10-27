@@ -39,20 +39,14 @@ provided separately. No private experiment filesystem is a download endpoint.
 
 ## Environment
 
-Use a separate CUDA environment for the video release. The original root
-requirements file has an older Transformers upper bound and should not be
-combined with the video requirements.
+The video release uses the same environment as the spatial release; the
+temporal and spatio-temporal runs were trained with exactly these pins.
 
 ```bash
-# First install mutually compatible CUDA builds of torch, torchvision,
-# vLLM, and flash-attn in your environment.
-pip install -r generalized/requirements.txt
+uv sync && source .venv/bin/activate   # from the repository root
 ```
 
-The version ranges in that file describe the Qwen3-VL runtime family, not a
-claim that every CUDA/driver combination has been validated. Install the
-compatible FlashAttention build separately. CPU tests do not validate an
-entire distributed GPU training environment.
+CPU tests do not validate an entire distributed GPU training environment.
 
 ## Training
 

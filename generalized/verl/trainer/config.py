@@ -64,18 +64,16 @@ class DataConfig:
 
     def post_init(self):
         if self.image_dir is not None:
-            if os.path.exists(self.image_dir):  # ray job uses absolute path
-                self.image_dir = os.path.abspath(self.image_dir)
-            else:
-                print(f"Image directory {self.image_dir} not found.")
-                self.image_dir = None
+            # A wrong image_dir would otherwise resolve images against the cwd.
+            if not os.path.isdir(self.image_dir):
+                raise FileNotFoundError(f"data.image_dir not found: {self.image_dir}")
+            self.image_dir = os.path.abspath(self.image_dir)  # ray job uses absolute path
 
         if self.format_prompt is not None:
-            if os.path.exists(self.format_prompt):  # ray job uses absolute path
-                self.format_prompt = os.path.abspath(self.format_prompt)
-            else:
-                print(f"Format prompt file {self.format_prompt} not found.")
-                self.format_prompt = None
+            # Dropping a missing template would silently change every prompt.
+            if not os.path.isfile(self.format_prompt):
+                raise FileNotFoundError(f"data.format_prompt not found: {self.format_prompt}")
+            self.format_prompt = os.path.abspath(self.format_prompt)  # ray job uses absolute path
 
 
 @dataclass

@@ -9,9 +9,11 @@ eight CUDA GPUs.
 ```bash
 git clone https://github.com/devinxzhang/CycleGRPO.git
 cd CycleGRPO
-pip install -r requirements.txt
-pip install -e .
+uv sync && source .venv/bin/activate
 ```
+
+This installs the exact versions recorded by the training runs (see the
+README "Setup" section; `requirements.txt` is the pip equivalent).
 
 ## 2. Download the co-SFT initialization
 

@@ -74,12 +74,19 @@ evaluation/
 
 ## Setup
 
+One environment serves both the spatial release and the video release
+(`generalized/`). It is pinned to the stack every released training run used:
+Python 3.11, torch 2.8.0 (CUDA 12.8), vLLM 0.11.0, transformers 4.57.1 and
+flash-attn 2.8.3, on Linux x86_64 with NVIDIA drivers for CUDA 12.8.
+
 ```bash
-pip install -r requirements.txt
-pip install -e .          # editable install of the verl package
+uv sync                    # creates .venv from uv.lock, including the flash-attn wheel
+source .venv/bin/activate
 ```
 
-Requires CUDA GPUs, PyTorch, and vLLM (SPMD mode). See `requirements.txt`.
+Without uv, install the same pins into a Python 3.11 environment with
+`pip install -r requirements.txt && pip install -e . --no-deps`.
+`requirements.txt` is exported from `uv.lock`.
 
 ## Data & checkpoints
 

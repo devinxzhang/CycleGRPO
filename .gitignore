@@ -9,3 +9,4 @@ data/
 rl_dataset/
 wandb/
 verl_wandb_logs/
+*.egg-info/

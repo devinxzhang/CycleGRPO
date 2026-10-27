@@ -3,20 +3,71 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "verl"
-dynamic = [
-    "version",
-    "dependencies",
-    "optional-dependencies",
-    "requires-python",
-    "authors",
-    "description",
-    "readme",
-    "license"
+name = "cyclegrpo"
+version = "0.3.3.dev0"
+description = "CycleGRPO and Generalized CycleGRPO: region-text cycle-consistent RL on a fork of EasyR1/veRL"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+# The released spatial and video runs used CPython 3.11.2; the pinned
+# flash-attn wheel below is built for cp311.
+requires-python = ">=3.11,<3.12"
+# Pinned to the environment recorded by every spatial and video training run
+# (torch 2.8.0 / CUDA 12.8, vLLM 0.11.0, transformers 4.57.1, flash-attn 2.8.3).
+dependencies = [
+    "accelerate==1.10.1",
+    "codetiming==1.4.0",
+    "datasets==4.2.0",
+    "decord==0.6.0",
+    "einops==0.6.0",
+    "flash-attn==2.8.3",
+    "hydra-core==1.3.6",
+    "liger-kernel==0.6.2",
+    "mmengine==0.10.7",
+    "nltk==3.8.1",
+    "numpy==1.26.4",  # training env had 1.26.0, below scipy 1.17.1's own floor
+    "omegaconf==2.3.0",
+    "openai==2.5.0",
+    "packaging==24.2",
+    "pandas==2.3.2",
+    "peft==0.17.1",
+    "pillow==11.3.0",
+    "psutil==5.9.4",
+    "pyarrow==21.0.0",
+    "pycocoevalcap==1.2",
+    "pycocotools==2.0.8",  # training env had 2.0.6, which has no cp311 wheel
+    "pyyaml==6.0",
+    "qwen-vl-utils==0.0.14",
+    "ray[default]==2.58.0",
+    "requests==2.32.5",
+    "safetensors==0.6.2",
+    "scipy==1.17.1",
+    "tensordict==0.12.2",
+    "torch==2.8.0",
+    "torchdata==0.11.0",
+    "torchvision==0.23.0",
+    "tqdm==4.67.1",
+    "transformers==4.57.1",
+    "vllm==0.11.0",
+    "wandb",
 ]
 
+[dependency-groups]
+dev = ["pytest", "ruff==0.14.0"]
+
+[tool.setuptools.packages.find]
+include = ["verl*", "generalized*", "projects*"]
+
+[tool.uv]
+# Training is CUDA-only; resolve the lock for Linux x86_64.
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+# flash-attn builds against torch at install time; use the prebuilt wheel instead.
+no-build-isolation-package = ["flash-attn"]
+
+[tool.uv.sources]
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" }
+
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 119
 indent-width = 4
 
