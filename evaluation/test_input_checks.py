@@ -1,19 +1,20 @@
 import pytest
-
 from input_checks import find_input_problems, require_inputs
 
 
 def test_reports_unset_placeholder_and_missing_paths(tmp_path):
     present = tmp_path / "present.json"
     present.write_text("[]")
-    problems = find_input_problems([
-        ("dataset", str(present), "file"),
-        ("root dir", str(tmp_path), "dir"),
-        ("unset", None, "dir"),
-        ("placeholder", "<PATH_TO_COCO2014>/train2014", "dir"),
-        ("missing", str(tmp_path / "absent.pth"), "file"),
-        ("file given as dir", str(present), "dir"),
-    ])
+    problems = find_input_problems(
+        [
+            ("dataset", str(present), "file"),
+            ("root dir", str(tmp_path), "dir"),
+            ("unset", None, "dir"),
+            ("placeholder", "<PATH_TO_COCO2014>/train2014", "dir"),
+            ("missing", str(tmp_path / "absent.pth"), "file"),
+            ("file given as dir", str(present), "dir"),
+        ]
+    )
     assert problems == [
         "unset is not set (got None)",
         "placeholder is not set (got '<PATH_TO_COCO2014>/train2014')",

@@ -1,0 +1,11 @@
+# Light CPU-only dependencies for `make check` and CI. Install a CPU build of
+# torch separately (see .github/workflows/cpu-tests.yml).
+codetiming
+numpy
+omegaconf>=2.3,<2.5
+packaging
+pillow
+pyarrow>=15.0.0
+pytest
+pyyaml
+ruff==0.14.0

@@ -85,8 +85,10 @@ video-conditioning environment explicitly.
 `MODEL_PATH` must be a complete local HF checkpoint. `TRAIN_FILE` must be a
 prepared parquet with valid local media paths. Check these inputs without
 starting training by adding `DRY_RUN=1`. This checks checkpoint inventory and
-parquet schema/source routes; it does not certify video decodability or GPU
-memory capacity.
+parquet schema/source routes, then resolves and prints the full trainer config
+including any Hydra overrides you append, so misspelled keys or bad values fail
+here. It does not start Ray or certify video decodability or GPU memory
+capacity. Set `VAL_FILE` only if you enable validation; it is optional.
 
 ```bash
 DRY_RUN=1 MODEL_PATH=/path/to/cosft TRAIN_FILE=/path/to/train.parquet \
@@ -168,7 +170,8 @@ is **not** a replacement for optimizer state. Resume with
 one resumable checkpoint and retains merged checkpoints separately.
 
 ```bash
-python -m pytest generalized/tests -q
+pip install -r requirements-test.txt  # plus a CPU build of torch
+make check                            # ruff + all CPU tests (spatial, video, evaluation)
 ```
 
 The tests cover task registries, temporal reward routing, temporal shaping,

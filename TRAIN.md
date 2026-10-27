@@ -75,6 +75,18 @@ DATA_DIR=/path/to/parquets \
 bash projects/rl/qwen3vl_4b_mt.sh
 ```
 
-The launcher validates all required data and reward-model weight files before
-starting Ray. Memory-related overrides are documented at the bottom of
+Before starting Ray, the launcher checks that the parquet and SAMTok weight
+files exist, validates the parquet schema and first rows
+(`projects/rl/datasets/check_rl_parquet.py`), and resolves the full config.
+Extra arguments are appended as config overrides. To run every check and print
+the resolved config without training (no GPU needed):
+
+```bash
+DRY_RUN=1 MODEL_PATH=checkpoints/Qwen3-VL-4B-SAMTok-co DATA_DIR=data/cyclegrpo \
+  bash projects/rl/qwen3vl_4b_mt.sh data.mini_rollout_batch_size=16
+```
+
+Each run saves `resolved_config.yaml` in its checkpoint directory. Resuming
+with a `trainer.load_checkpoint_path` that does not exist is an error.
+Memory-related overrides are listed at the bottom of
 `projects/rl/qwen3vl_4b_mt.sh`.

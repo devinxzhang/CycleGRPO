@@ -68,8 +68,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("parquets", nargs="+")
     parser.add_argument("--sample", type=int, default=32, help="Rows to validate from the start of each file.")
-    parser.add_argument("--image_dir", default=None,
-                        help="Base directory for relative image paths (data.image_dir); default: current directory.")
+    parser.add_argument(
+        "--image_dir",
+        default=None,
+        help="Base directory for relative image paths (data.image_dir); default: current directory.",
+    )
     args = parser.parse_args()
     failed = False
     for path in args.parquets:
