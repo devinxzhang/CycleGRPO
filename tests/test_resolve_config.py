@@ -35,3 +35,16 @@ def test_missing_resume_path_is_an_error(runtime, config_file, tmp_path):
         resolve(runtime, config_file, f"trainer.load_checkpoint_path={tmp_path / 'missing'}")
     config = resolve(runtime, config_file, f"trainer.load_checkpoint_path={tmp_path}")
     assert config.trainer.load_checkpoint_path == str(tmp_path)
+
+
+@pytest.mark.parametrize("runtime,config_file", RUNTIMES)
+def test_missing_image_dir_is_an_error(runtime, config_file, tmp_path):
+    with pytest.raises(FileNotFoundError, match="image_dir"):
+        resolve(runtime, config_file, f"data.image_dir={tmp_path / 'missing'}")
+    assert resolve(runtime, config_file, f"data.image_dir={tmp_path}").data.image_dir == str(tmp_path)
+
+
+@pytest.mark.parametrize("runtime,config_file", RUNTIMES)
+def test_missing_format_prompt_is_an_error(runtime, config_file, tmp_path):
+    with pytest.raises(FileNotFoundError, match="format_prompt"):
+        resolve(runtime, config_file, f"data.format_prompt={tmp_path / 'missing.jinja'}")

@@ -12,7 +12,7 @@ LINT_PATHS := tests \
 TEST_PATHS := tests generalized/tests evaluation
 
 build:
-	python3 setup.py sdist bdist_wheel
+	uv build
 
 check: quality test
 
