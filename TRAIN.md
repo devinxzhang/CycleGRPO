@@ -41,14 +41,16 @@ python projects/rl/datasets/prepare_gres_no_target_rl_dataset.py \
   --output_path data/cyclegrpo/gres_no_target_train.parquet
 ```
 
-Provide a held-out validation parquet as well. The launcher expects:
+The launcher expects:
 
 ```text
 data/cyclegrpo/
   denseworld_train.parquet
   gres_no_target_train.parquet
-  val.parquet
 ```
+
+No validation parquet is needed: cycle-aware validation is not implemented
+for the spatial runtime, so the launcher trains with validation disabled.
 
 The RL stage consumes region masks but does not require reference captions for
 the DenseWorld cycle samples. Dataset images remain in their original public

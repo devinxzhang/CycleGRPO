@@ -22,7 +22,6 @@ SAM2_PATH="${SAM2_PATH:-${MODEL_PATH}/sam2.1_hiera_large.pt}"
 for path in \
     "${DATA_DIR}/denseworld_train.parquet" \
     "${DATA_DIR}/gres_no_target_train.parquet" \
-    "${DATA_DIR}/val.parquet" \
     "${MASK_TOKENIZER_PATH}" \
     "${SAM2_PATH}"; do
     if [[ ! -f "${path}" ]]; then
@@ -35,7 +34,7 @@ done
 python3 -m verl.trainer.main \
     config=projects/rl/config.yaml \
     data.train_files="['${DATA_DIR}/denseworld_train.parquet', '${DATA_DIR}/gres_no_target_train.parquet']" \
-    data.val_files="['${DATA_DIR}/val.parquet']" \
+    data.val_files=[] \
     data.format_prompt=./projects/rl/format_prompt/non_thinking.jinja \
     data.region_format=mask_token \
     worker.actor.model.freeze_vision_tower=true \

@@ -427,7 +427,7 @@ class RayPPOTrainer:
         tokenizer: PreTrainedTokenizer,
         processor: Optional[ProcessorMixin],
         train_dataloader: StatefulDataLoader,
-        val_dataloader: StatefulDataLoader,
+        val_dataloader: Optional[StatefulDataLoader],
         role_worker_mapping: dict[Role, Type[Worker]],
         resource_pool_manager: ResourcePoolManager,
         ray_worker_group_cls: Type[RayWorkerGroup] = RayWorkerGroup,
@@ -439,6 +439,13 @@ class RayPPOTrainer:
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.config = config
+        validation_enabled = config.trainer.val_before_train or config.trainer.val_freq > 0 or config.trainer.val_only
+        if validation_enabled and val_dataloader is None:
+            raise ValueError(
+                "Validation is enabled but data.val_files is empty. Set data.val_files (VAL_FILE in "
+                "generalized/train.sh) or disable validation with trainer.val_before_train=false, "
+                "trainer.val_freq=-1 and trainer.val_only=false."
+            )
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
 
