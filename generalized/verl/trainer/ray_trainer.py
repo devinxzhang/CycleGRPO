@@ -598,8 +598,10 @@ class RayPPOTrainer:
             "last_actor_path": os.path.abspath(actor_path),
         }
         checkpointer_tracker_path = os.path.join(self.config.trainer.save_checkpoint_path, CHECKPOINT_TRACKER)
-        with open(checkpointer_tracker_path, "w") as f:
+        # Write-then-rename so an interrupted save never leaves a truncated tracker.
+        with open(checkpointer_tracker_path + ".tmp", "w") as f:
             json.dump(checkpointer_tracker_info, f, ensure_ascii=False, indent=2)
+        os.replace(checkpointer_tracker_path + ".tmp", checkpointer_tracker_path)
 
         # Publish an inference-ready HF checkpoint only after every distributed
         # shard and the tracker are durable. The merger writes to a temporary

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Multi-GPU launcher for qwen3vl_groundingsuite_infer.py
 # Data-parallel: shard the eval jsonl across N GPUs, one process per GPU.
-# Per-idx JSON outputs => shards never collide, and re-running resumes (skips done idx).
+# Per-idx JSON outputs => shards never collide. Re-running resumes, skipping only
+# results written by the same model/weights/dataset (see gs_result_store.py).
 #
 # Usage:
 #   bash run_groundingsuite_multigpu.sh [NUM_GPUS] [MODEL_PATH] [SAVE_DIR]
@@ -68,4 +69,11 @@ rc=0
 for p in "${pids[@]}"; do wait "$p" || rc=1; done
 done=$(find "$SAVE_DIR" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l)
 echo "All shards finished (rc=$rc). $done/$TOTAL outputs in $SAVE_DIR"
+if ! python3 "$SCRIPT_DIR/gs_result_store.py" \
+    --dataset "$DATASET" --model_path "$MODEL_PATH" \
+    --vq_sam2_path "$VQ_SAM2_PATH" --sam2_path "$SAM2_PATH" \
+    --save_dir "$SAVE_DIR" --require_complete; then
+    echo "GroundingSuite output verification failed: some results are missing or stale" >&2
+    rc=1
+fi
 exit $rc
