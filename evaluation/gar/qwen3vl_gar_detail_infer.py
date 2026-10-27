@@ -2,6 +2,7 @@ import argparse
 import copy
 import math
 import os
+import sys
 import torch
 import torchvision
 import tqdm
@@ -19,6 +20,8 @@ import io
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from input_checks import require_inputs  # noqa: E402
 
 from torchvision.transforms.functional import resize, to_pil_image
 class DirectResize:
@@ -38,9 +41,13 @@ def parse_args():
     parser.add_argument('model_path', help='hf model path.')
     parser.add_argument(
         '--vq_sam2_path',
-        default="Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth",
         help='vq-sam2 model path.')
     parser.add_argument('--output', help='output file name')
+    parser.add_argument(
+        '--gar_bench_root',
+        default=os.environ.get('GAR_BENCH_ROOT'),
+        help='GAR-Bench annotations directory with the JSON files and images/ (env: GAR_BENCH_ROOT).')
     args = parser.parse_args()
     return args
 
@@ -64,6 +71,12 @@ def decode_mask(object_masks, ori_height, ori_width):
 
 def main():
     args = parse_args()
+    ann_path = os.path.join(args.gar_bench_root or '', 'GAR-Bench-Caption-Detailed.json')
+    require_inputs([
+        ('--gar_bench_root (or GAR_BENCH_ROOT)', args.gar_bench_root, 'dir'),
+        ('GAR-Bench-Caption-Detailed.json', ann_path, 'file'),
+        ('--vq_sam2_path', args.vq_sam2_path, 'file'),
+    ])
 
     MT_START_TOKEN = '<|mt_start|>'
     MT_END_TOKEN = '<|mt_end|>'
@@ -99,13 +112,13 @@ def main():
 
     sam2_image_processor = DirectResize(1024)
 
-    with open('<PATH_TO_GAR_BENCH>/GAR-Bench-Caption-Detailed.json', 'r') as f:
+    with open(ann_path, 'r') as f:
         eval_samples = json.load(f)
     
     all_items = []
     for eval_sample in eval_samples:
         image_file = eval_sample['image']
-        image_path = os.path.join('<PATH_TO_GAR_BENCH>/', image_file)
+        image_path = os.path.join(args.gar_bench_root, image_file)
         segm1 = eval_sample['mask_rles'][0]
         segm2 = eval_sample['mask_rles'][1]
         image = Image.open(image_path).convert('RGB')

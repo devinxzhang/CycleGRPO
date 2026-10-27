@@ -12,30 +12,31 @@ set -u
 NUM_GPUS=${1:-8}
 MODEL_PATH=${2:-zhouyik/Qwen3-VL-4B-SAMTok-co}
 SAVE_DIR=${3:-./results/gcg/}
-VQ_SAM2_PATH=${VQ_SAM2_PATH:-Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth}
-SAM2_PATH=${SAM2_PATH:-Qwen/sam2.1_hiera_large.pt}
-# Image folder is passed through to the inference script and verifier.
-IMAGE_FOLDER=${IMAGE_FOLDER:-<PATH_TO_DATA>/Sa2VA-Training/glamm_data/images/grandf/val_test}
+VQ_SAM2_PATH=${VQ_SAM2_PATH:-./checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth}
+SAM2_PATH=${SAM2_PATH:-./checkpoints/Qwen3-VL-4B-SAMTok-co/sam2.1_hiera_large.pt}
+# Required: <Sa2VA-Training>/glamm_data/images/grandf/val_test
+# (https://huggingface.co/datasets/Dense-World/Sa2VA-Training). Passed to the
+# inference script and verifier through the environment.
+IMAGE_FOLDER=${IMAGE_FOLDER:-}
 export IMAGE_FOLDER
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EVAL="$SCRIPT_DIR/qwen3vl_gcg_eval.py"
 
-# script hardcodes ./results/... relative to the MaskTokenizer repo root
+# Relative paths (./checkpoints, ./results) resolve from the repo root.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 echo "repo root: $REPO_ROOT"
 mkdir -p "$SAVE_DIR" logs
 
+COMMON_ARGS=(--model_path "$MODEL_PATH" --vq_sam2_path "$VQ_SAM2_PATH" --sam2_path "$SAM2_PATH"
+             --save_dir "$SAVE_DIR" --launcher none)
+python "$EVAL" "${COMMON_ARGS[@]}" --check_only || exit 1
+
 echo "Launching $NUM_GPUS shards | model=$MODEL_PATH | save=$SAVE_DIR"
 pids=()
 for ((t=0; t<NUM_GPUS; t++)); do
-    CUDA_VISIBLE_DEVICES=$t python "$EVAL" \
-        --model_path "$MODEL_PATH" \
-        --vq_sam2_path "$VQ_SAM2_PATH" \
-        --sam2_path "$SAM2_PATH" \
-        --save_dir "$SAVE_DIR" \
-        --launcher none \
+    CUDA_VISIBLE_DEVICES=$t python "$EVAL" "${COMMON_ARGS[@]}" \
         --task_id "$t" --num_tasks "$NUM_GPUS" --gpu_id 0 \
         > "logs/gcg_shard${t}.log" 2>&1 &
     pids+=($!)

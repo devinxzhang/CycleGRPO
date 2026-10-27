@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+import sys
 import time
 import torch
 import tqdm
@@ -21,6 +22,8 @@ from torchvision.transforms.functional import to_pil_image
 from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
 from projects.vlm.tokenmask.evaluation.utils import _init_dist_pytorch, get_dist_info, collect_results_cpu
 from gcg_result_store import image_sha256, make_run_id, output_is_complete
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from input_checks import require_inputs  # noqa: E402
 
 
 class DirectResize:
@@ -42,7 +45,7 @@ def parse_args():
         help='hf model path.')
     parser.add_argument(
         '--vq_sam2_path',
-        default="Qwen/Qwen3-VL-4B-SAMTok/mask_tokenizer_256x2.pth",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/mask_tokenizer_256x2.pth",
         help='vq-sam2 model path.')
     parser.add_argument(
         '--split',
@@ -50,7 +53,7 @@ def parse_args():
         help='Specify a split')
     parser.add_argument(
         '--sam2_path',
-        default="Qwen/sam2.1_hiera_large.pt",
+        default="./checkpoints/Qwen3-VL-4B-SAMTok-co/sam2.1_hiera_large.pt",
         help='sam2 model path.')
     parser.add_argument(
         '--save_dir',
@@ -68,6 +71,8 @@ def parse_args():
     parser.add_argument('--gpu_id', '--gpu-id', type=int, default=-1,
                         help='CUDA device to bind this process to. Default -1 => use task_id.')
     parser.add_argument('--local_rank', '--local-rank', type=int, default=0)
+    parser.add_argument('--check_only', '--check-only', action='store_true',
+                        help='Validate input paths and exit without loading the model.')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -87,7 +92,8 @@ def load_image_with_retry(path, retries=6, base_delay=0.5):
 
 
 # download from https://huggingface.co/datasets/Dense-World/Sa2VA-Training
-IMAGE_FOLDER = os.environ.get('IMAGE_FOLDER', '<PATH_TO_DATA>/Sa2VA-Training/glamm_data/images/grandf/val_test')
+# Set IMAGE_FOLDER to <Sa2VA-Training>/glamm_data/images/grandf/val_test.
+IMAGE_FOLDER = os.environ.get('IMAGE_FOLDER')
 
 
 class GCGInferenceDataset:
@@ -192,6 +198,14 @@ def fix_mt_format_comprehensive(text):
 
 def main():
     args = parse_args()
+    require_inputs([
+        ('IMAGE_FOLDER (GranDf val_test images)', IMAGE_FOLDER, 'dir'),
+        ('--vq_sam2_path', args.vq_sam2_path, 'file'),
+        ('--sam2_path', args.sam2_path, 'file'),
+    ])
+    if args.check_only:
+        print('GCG inputs OK')
+        return
 
     if args.launcher != 'none':
         # torchrun / DDP path

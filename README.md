@@ -132,18 +132,32 @@ of memory. The main script has a commented block of options. Add them to the
 ## Inference / evaluation
 
 Each benchmark lives under `evaluation/<benchmark>/`. The multi-GPU launchers
-shard the dataset across GPUs and save one JSON result per sample:
+validate every input path before loading a model, shard the dataset across
+GPUs, and save one JSON result per sample. SAMTok weights default to
+`./checkpoints/Qwen3-VL-4B-SAMTok-co/` (the snapshot from [TRAIN.md](TRAIN.md));
+override them with `VQ_SAM2_PATH` and `SAM2_PATH`.
+
+| Benchmark | Data to download | How to point the scripts at it |
+|---|---|---|
+| GRES | [gRefCOCO](https://github.com/henghuiding/gRefCOCO) `grefs(unc).json` + `instances.json`, and COCO `train2014` | Build the case file once with `python evaluation/gres/qwen3vl_gres_eval.py --prepare_split val --grefs_dir <dir> --dataset data/grefcoco_val.json`, then set `DATASET=data/grefcoco_val.json`, `COCO_ROOT=<dir containing train2014/>` |
+| GroundingSuite | [GSEval](https://huggingface.co/datasets/hustvl/GSEval) | `DATASET=<.../GroundingSuite-Eval.jsonl>`; images are read from `unlabeled2017/` next to it (override with `IMAGE_ROOT`) |
+| GCG | GranDf `val_test` images from [Sa2VA-Training](https://huggingface.co/datasets/Dense-World/Sa2VA-Training) | `IMAGE_FOLDER=<...>/glamm_data/images/grandf/val_test` |
+| GAR-Bench | [Grasp-Any-Region](https://github.com/Haochen-Wang409/Grasp-Any-Region) `evaluation/GAR-Bench/annotations` | `GAR_BENCH_ROOT=<annotations dir>` or `--gar_bench_root` |
 
 ```bash
 # Referring segmentation (GRES)
-bash evaluation/gres/run_gres_multigpu.sh                     8 <MODEL_PATH> ./results/gres/
+DATASET=data/grefcoco_val.json COCO_ROOT=/data/coco \
+bash evaluation/gres/run_gres_multigpu.sh 8 <MODEL_PATH> ./results/gres/
 # GroundingSuite
+DATASET=data/GroundingSuiteEval/GroundingSuite-Eval.jsonl \
 bash evaluation/groundingsuite/run_groundingsuite_multigpu.sh 8 <MODEL_PATH> ./results/groundingsuite/
 # Grounded caption generation (GCG)
-bash evaluation/gcg/run_gcg_multigpu.sh                       8 <MODEL_PATH> ./results/gcg/
+IMAGE_FOLDER=/data/Sa2VA-Training/glamm_data/images/grandf/val_test \
+bash evaluation/gcg/run_gcg_multigpu.sh 8 <MODEL_PATH> ./results/gcg/
 
 # GAR-Bench VQA (single-process inference, then metrics)
-python evaluation/gar/qwen3vl_gar_vqa_infer.py <MODEL_PATH> --output results/gar/vqa.json
+python evaluation/gar/qwen3vl_gar_vqa_infer.py <MODEL_PATH> \
+  --gar_bench_root /data/GAR-Bench/annotations --output results/gar/vqa.json
 python evaluation/gar/gar_vqa_metrics.py results/gar/vqa.json
 
 # DLC-Bench (start the Llama judge server in a separate shell, then infer + eval)
@@ -153,9 +167,10 @@ python evaluation/dlc_bench/eval_llama_without_image.py \
   --pred evaluation/dlc_bench/model_outputs/<CACHE_NAME>.json --base-url http://localhost:8007/v1
 ```
 
-Fill the dataset placeholders inside the eval scripts where noted:
-`<PATH_TO_COCO2014>` (gres / groundingsuite) and `<PATH_TO_GAR_BENCH>` (gar).
-Bounding-box generalization variants live in `evaluation/bbox/`.
+To check paths without a GPU, pass `--check_only` to the GRES, GroundingSuite,
+or GCG inference script; it reports every missing input at once and exits.
+Bounding-box generalization variants live in `evaluation/bbox/` and still use
+the `<PATH_TO_*>` placeholders inside the scripts.
 
 ## Results
 
