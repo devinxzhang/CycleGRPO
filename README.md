@@ -108,7 +108,7 @@ Configure the public training launcher with the following paths:
 
 ## Training
 
-Download the public co-SFT initialization, prepare the three parquet files
+Download the public co-SFT initialization, prepare the parquet files
 described in [`TRAIN.md`](TRAIN.md), and launch:
 
 ```bash
