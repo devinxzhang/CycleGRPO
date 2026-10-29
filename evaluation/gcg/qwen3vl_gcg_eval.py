@@ -80,7 +80,7 @@ def parse_args():
 
 
 def load_image_with_retry(path, retries=6, base_delay=0.5):
-    """Open an image, retrying transient NAS I/O failures with backoff."""
+    """Open an image, retrying transient I/O failures with backoff."""
     last = None
     for i in range(retries):
         try:
