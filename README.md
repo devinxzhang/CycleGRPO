@@ -5,6 +5,7 @@
   <a href="https://arxiv.org/pdf/2607.11581"><img src="https://img.shields.io/badge/Paper-PDF-red?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Paper"></a>
   <a href="https://arxiv.org/abs/2607.11581"><img src="https://img.shields.io/badge/arXiv-2607.11581-b31b1b?style=for-the-badge&logo=arxiv&logoColor=white" alt="arXiv"></a>
   <a href="https://huggingface.co/XinNUS/CycleGRPO-4B"><img src="https://img.shields.io/badge/HuggingFace-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Models"></a>
+  <a href="https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data"><img src="https://img.shields.io/badge/HuggingFace-RL%20Data-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="RL Data"></a>
   <a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-1a73e8?style=for-the-badge" alt="ECCV 2026"></a>
 </p>
 
@@ -95,9 +96,13 @@ Configure the public training launcher with the following paths:
 - **`MODEL_PATH`** — the cold-start (co-SFT) Qwen3-VL-4B + mask-token
   checkpoint that RL starts from. The public initialization is
   [`zhouyik/Qwen3-VL-4B-SAMTok-co`](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co).
-- **`DATA_DIR`** — directory holding the RL `*.parquet` files. Build them
-  with the scripts in `projects/rl/datasets/` (e.g. `prepare_dw_rl_dataset.py`,
-  `prepare_gres_no_target_rl_dataset.py`). A typical training mix combines
+- **`DATA_DIR`** — directory holding the RL `*.parquet` files. The published
+  training data is
+  [`XinNUS/CycleGRPO-RL-Data`](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data):
+  19,655 DenseWorld region samples, 1,000 GRES no-target samples and the
+  zoom-in crops they reference. To build your own instead, use the scripts in
+  `projects/rl/datasets/` (e.g. `prepare_dw_rl_dataset.py`,
+  `prepare_gres_no_target_rl_dataset.py`); a typical training mix combines
   DenseWorld region samples with GRES no-target samples.
 - **`<PATH_TO_COCO2014>`** — COCO2014 `train2014/` images, used only by the
   gres/groundingsuite **eval** scripts.
@@ -108,15 +113,21 @@ Configure the public training launcher with the following paths:
 
 ## Training
 
-Download the public co-SFT initialization, prepare the parquet files
-described in [`TRAIN.md`](TRAIN.md), and launch:
+Download the public co-SFT initialization and the released RL data, then
+launch ([`TRAIN.md`](TRAIN.md) covers the data layout, the paper
+configuration and how to build your own parquets):
 
 ```bash
 hf download zhouyik/Qwen3-VL-4B-SAMTok-co \
   --local-dir checkpoints/Qwen3-VL-4B-SAMTok-co
 
-MODEL_PATH=checkpoints/Qwen3-VL-4B-SAMTok-co \
-DATA_DIR=data/cyclegrpo \
+D=data/CycleGRPO-RL-Data
+hf download XinNUS/CycleGRPO-RL-Data --repo-type dataset --local-dir $D
+(cd $D && tar -xf images/crops.tar && python prepare_images.py \
+  --v3det_images /path/to/V3Det/images --coco_train2014 /path/to/coco/train2014)
+
+MODEL_PATH=checkpoints/Qwen3-VL-4B-SAMTok-co IMAGE_DIR=$D \
+TRAIN_FILES=$D/data/denseworld_multi_4856.parquet,$D/data/denseworld_multi_4920.parquet,$D/data/denseworld_multi_4938.parquet,$D/data/denseworld_multi_4941.parquet,$D/data/gres_no_target_1000.parquet \
 bash projects/rl/qwen3vl_4b_mt.sh
 ```
 
