@@ -299,16 +299,31 @@ class RayWorkerGroup(WorkerGroup):
                 self._worker_names.append(name)
 
                 if rank == 0:
+                    # Rank 0 registers itself once its worker process has imported torch
+                    # and vLLM, which on a cold filesystem can take much longer than the
+                    # default two minutes. VERL_REGISTER_CENTER_TIMEOUT raises the wait.
+                    timeout = int(os.environ.get("VERL_REGISTER_CENTER_TIMEOUT", "120"))
                     register_center_actor = None
-                    for _ in range(120):
+                    for _ in range(timeout):
                         if f"{self.name_prefix}_register_center" not in list_named_actors():
                             time.sleep(1)
                         else:
                             register_center_actor = ray.get_actor(f"{self.name_prefix}_register_center")
                             break
-                    assert register_center_actor is not None, (
-                        f"failed to get register_center_actor: {self.name_prefix}_register_center in {list_named_actors(all_namespaces=True)}"
-                    )
+                    if register_center_actor is None:
+                        # The worker may have died while starting up; surface that error
+                        # instead of only reporting the missing register center.
+                        try:
+                            ray.get(worker.__ray_ready__.remote(), timeout=60)
+                            worker_error = "rank 0 worker is alive but never registered"
+                        except Exception as e:  # noqa: BLE001
+                            worker_error = f"rank 0 worker failed to start: {type(e).__name__}: {e}"
+                        raise RuntimeError(
+                            f"failed to get register_center_actor {self.name_prefix}_register_center "
+                            f"within {timeout}s. {worker_error}. "
+                            f"Named actors: {list_named_actors(all_namespaces=True)}. "
+                            "Raise VERL_REGISTER_CENTER_TIMEOUT if worker start-up is simply slow."
+                        )
                     rank_zero_info = ray.get(register_center_actor.get_rank_zero_info.remote())
                     self._master_addr, self._master_port = rank_zero_info["MASTER_ADDR"], rank_zero_info["MASTER_PORT"]
                     # print(f"rank_zero_info: {rank_zero_info}")
