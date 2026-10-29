@@ -1,27 +1,27 @@
 import argparse
+import json
 import math
 import os
+import re
 import sys
+import tempfile
 import time
+
+import hydra
+import numpy as np
 import torch
 import tqdm
-from pycocotools import mask as mask_utils
-import numpy as np
-import copy
-import hydra
-
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-
+from gcg_result_store import image_sha256, make_run_id, output_is_complete
 from PIL import Image
-import re
-import json
-import tempfile
-
+from pycocotools import mask as mask_utils
 from qwen_vl_utils import process_vision_info
 from torchvision.transforms.functional import to_pil_image
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from projects.vlm.tokenmask.evaluation.utils import _init_dist_pytorch, get_dist_info, collect_results_cpu
-from gcg_result_store import image_sha256, make_run_id, output_is_complete
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
+from projects.vlm.tokenmask.evaluation.utils import _init_dist_pytorch, collect_results_cpu, get_dist_info
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from input_checks import require_inputs  # noqa: E402
 
@@ -318,10 +318,10 @@ def main():
 
         # Inference: Generation of the output
         generated_ids = model.generate(
-            **inputs, 
+            **inputs,
             max_new_tokens=512,
-            do_sample=False, 
-            top_p=1.0,  
+            do_sample=False,
+            top_p=1.0,
         )
         generated_ids_trimmed = [
             out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)

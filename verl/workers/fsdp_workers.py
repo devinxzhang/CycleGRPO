@@ -15,23 +15,20 @@
 The main entry point to run the PPO algorithm
 """
 
-from typing import Literal, Optional, Union, cast, Tuple, List
-
 import re
+from typing import List, Literal, Optional, Tuple, Union, cast
+
 import hydra
-import copy
-from PIL import Image
-from io import BytesIO
 import numpy as np
 import psutil
 import torch
 import torch.distributed as dist
-from torchvision.transforms.functional import to_pil_image
 from accelerate import init_empty_weights
 from codetiming import Timer
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import CPUOffload, MixedPrecision, ShardingStrategy
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torchvision.transforms.functional import to_pil_image
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -40,6 +37,8 @@ from transformers import (
     GenerationConfig,
     PreTrainedModel,
 )
+
+
 try:
     from transformers.modeling_utils import no_init_weights  # old HF
 except ImportError:
@@ -47,6 +46,7 @@ except ImportError:
         from transformers.utils import no_init_weights  # mid HF
     except ImportError:
         from contextlib import contextmanager
+
         import torch.nn as nn
         from transformers.modeling_utils import PreTrainedModel
         @contextmanager
@@ -60,6 +60,8 @@ except ImportError:
             finally:
                 nn.Linear.reset_parameters = old_linear
                 PreTrainedModel.init_weights = old_init
+
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
 from ..models.monkey_patch import apply_ulysses_patch
 from ..protocol import DataProto
@@ -84,7 +86,7 @@ from .config import ActorConfig, CriticConfig, FSDPConfig, ModelConfig, OptimCon
 from .rollout import vLLMRollout
 from .sharding_manager import FSDPVLLMShardingManager
 from .sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
-from projects.transformers.vq_sam2 import SAM2Config, VQ_SAM2Config, VQ_SAM2
+
 
 class DirectResize:
     def __init__(self, target_length: int) -> None:
@@ -96,7 +98,7 @@ class DirectResize:
         """
         img = to_pil_image(image, mode='RGB')
         return np.array(img.resize((self.target_length, self.target_length)))
-    
+
 def extract_mt_token_ids_v1(text):
     pattern = r"<\|mt_(\d{4})\|>"
     return [int(x) for x in re.findall(pattern, text)]
@@ -138,13 +140,13 @@ def fix_mt_format_comprehensive(text):
 def extract_bbox_from_response(response_str: str) -> Optional[Tuple[int, int, int, int]]:
     """
     从 response 字符串中提取 bounding box 坐标。
-    
+
     Args:
         response_str: 模型生成的响应字符串，例如 '[7, 296, 998, 885]<|im_end|>'
-    
+
     Returns:
         Tuple[int, int, int, int]: (x1, y1, x2, y2) 坐标元组，如果未找到则返回 None
-    
+
     Examples:
         >>> extract_bbox_from_response('[7, 296, 998, 885]<|im_end|>')
         (7, 296, 998, 885)
@@ -153,38 +155,38 @@ def extract_bbox_from_response(response_str: str) -> Optional[Tuple[int, int, in
     """
     if response_str is None:
         return None
-    
+
     # 匹配 [x1, y1, x2, y2] 格式的 bbox
     bbox_pattern = r'\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]'
     match = re.search(bbox_pattern, response_str)
-    
+
     if match:
         x1, y1, x2, y2 = int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4))
         return (x1, y1, x2, y2)
-    
+
     return None
 
 def extract_all_bboxes_from_response(response_str: str) -> List[Tuple[int, int, int, int]]:
     """
     从 response 字符串中提取所有 bounding box 坐标。
-    
+
     Args:
         response_str: 模型生成的响应字符串
-    
+
     Returns:
         List[Tuple[int, int, int, int]]: 所有 (x1, y1, x2, y2) 坐标元组的列表
-    
+
     Examples:
         >>> extract_all_bboxes_from_response('[7, 296, 998, 885] and [100, 200, 300, 400]')
         [(7, 296, 998, 885), (100, 200, 300, 400)]
     """
     if response_str is None:
         return []
-    
+
     # 匹配所有 [x1, y1, x2, y2] 格式的 bbox
     bbox_pattern = r'\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]'
     matches = re.findall(bbox_pattern, response_str)
-    
+
     return [(int(x1), int(y1), int(x2), int(y2)) for x1, y1, x2, y2 in matches]
 
 def compute_bbox_iou(
@@ -193,14 +195,14 @@ def compute_bbox_iou(
 ) -> float:
     """
     计算两个 bounding box 之间的 IoU (Intersection over Union)。
-    
+
     Args:
         pred_bbox: 预测的 bbox (x1, y1, x2, y2)，如果为 None 则返回 0.0
         gt_bbox: ground truth 的 bbox (x1, y1, x2, y2)，如果为 None 则返回 0.0
-    
+
     Returns:
         float: IoU 值，范围 [0.0, 1.0]
-    
+
     Examples:
         >>> compute_bbox_iou((0, 0, 100, 100), (50, 50, 150, 150))
         0.14285714285714285
@@ -211,32 +213,32 @@ def compute_bbox_iou(
     """
     if pred_bbox is None or gt_bbox is None:
         return 0.0
-    
+
     pred_x1, pred_y1, pred_x2, pred_y2 = pred_bbox
     gt_x1, gt_y1, gt_x2, gt_y2 = gt_bbox
-    
+
     # 计算交集区域
     inter_x1 = max(pred_x1, gt_x1)
     inter_y1 = max(pred_y1, gt_y1)
     inter_x2 = min(pred_x2, gt_x2)
     inter_y2 = min(pred_y2, gt_y2)
-    
+
     # 如果没有交集
     if inter_x1 >= inter_x2 or inter_y1 >= inter_y2:
         return 0.0
-    
+
     inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
-    
+
     # 计算各自的面积
     pred_area = (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
     gt_area = (gt_x2 - gt_x1) * (gt_y2 - gt_y1)
-    
+
     # 计算并集面积
     union_area = pred_area + gt_area - inter_area
-    
+
     if union_area <= 0:
         return 0.0
-    
+
     iou = inter_area / union_area
 
     return iou
@@ -383,7 +385,7 @@ def video_grounding_format_reward(response_str: Optional[str]) -> int:
     return int(
         re.search(interval_pattern, answer_content, flags=re.I) is not None
     )
-    
+
 def extract_think_and_answer_robust(response: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Extracts the content between <think> and <answer> tags from a string,
@@ -391,7 +393,7 @@ def extract_think_and_answer_robust(response: str) -> Tuple[Optional[str], Optio
     Args:
         response (str): The input string, potentially containing <think> and <answer> tags.
     Returns:
-        Tuple[Optional[str], Optional[str]]: 
+        Tuple[Optional[str], Optional[str]]:
             A tuple containing (think_content, answer_content).
             Each element will be a string if found, or None if the corresponding tag is not found.
     """
@@ -411,7 +413,7 @@ def extract_think_and_answer_robust(response: str) -> Tuple[Optional[str], Optio
     answer_match = answer_pattern.search(response)
     if answer_match:
         answer_content = answer_match.group(1) # group(1) gets the content of the first capture group
-    
+
     if answer_content is None or think_content is None:
         if '<answer>' in response:
             head, tail = response.split('<answer>', 1)
@@ -837,7 +839,7 @@ class FSDPWorker(Worker):
                 lr_scheduler=self.lr_scheduler,
                 processing_class=self.processor or self.tokenizer,
             )
-        
+
         if self.vq_sam2 is not None:
             device = torch.cuda.current_device()
             self.print_rank0(f"Moving mask tokenizer to device: {device}")
@@ -1081,13 +1083,13 @@ class FSDPWorker(Worker):
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def accumulate_actor_gradients(self, data: DataProto):
         """Compute gradients for actor without optimizer step (for gradient accumulation).
-        
+
         Args:
             data: DataProto containing the batch data.
                   grad_weight should be passed via data.meta_info['grad_weight'] (default 1.0)
         """
         assert self._has_actor
-        
+
         # Get grad_weight from meta_info (default to 1.0)
         grad_weight = data.meta_info.get('grad_weight', 1.0)
 
@@ -1102,7 +1104,7 @@ class FSDPWorker(Worker):
 
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
-            with Timer(name="accumulate_gradients", logger=None) as timer:
+            with Timer(name="accumulate_gradients", logger=None):
                 # Only compute gradients, don't step optimizer
                 metrics = self.actor.update_policy(data=data, do_optimizer_step=False, grad_weight=grad_weight)
 
@@ -1163,8 +1165,8 @@ class FSDPWorker(Worker):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def clear_multi_modal_cache(self):
-        """Clear the multi-modal inputs cache. 
-        
+        """Clear the multi-modal inputs cache.
+
         Call this when switching between different tasks (e.g., caption to segmentation)
         to avoid uid mismatch issues.
         """
@@ -1185,7 +1187,7 @@ class FSDPWorker(Worker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def swap_to_ref_weights(self):
         """Swap vLLM weights to ref model weights.
-        
+
         Call this when the vLLM engine is already loaded (via prepare_rollout_engine)
         and you want to temporarily use ref model weights instead of actor weights.
         """
@@ -1195,7 +1197,7 @@ class FSDPWorker(Worker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def swap_to_actor_weights(self):
         """Swap vLLM weights back to actor model weights.
-        
+
         Call this after using ref weights to restore actor weights.
         """
         self.rollout_sharding_manager.sync_weights_only()
@@ -1203,7 +1205,7 @@ class FSDPWorker(Worker):
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences_with_ref(self, prompts: DataProto):
         """Generate sequences using the reference (pretrained) model.
-        
+
         This method uses the same vLLM engine as the actor, but temporarily
         swaps in the ref_fsdp_module (pretrained weights) for generation.
         After generation, it swaps back to actor weights.
@@ -1222,15 +1224,15 @@ class FSDPWorker(Worker):
 
         # Swap to ref model weights before generation
         self.ref_rollout_sharding_manager.sync_weights_only()
-        
+
         prompts = self.ref_rollout_sharding_manager.preprocess_data(prompts)
         # Use the same rollout engine with ref model weights
         output = self.rollout.generate_sequences(prompts=prompts)
         output = self.ref_rollout_sharding_manager.postprocess_data(output)
-        
+
         # Swap back to actor weights after generation
         self.rollout_sharding_manager.sync_weights_only()
-        
+
         output = output.to("cpu")
 
         # Compare mask tokens directly with seg_ground_truth (without decoding to masks)
@@ -1239,8 +1241,7 @@ class FSDPWorker(Worker):
             response_ids = output.batch["responses"]
             response_length = torch.sum(output.batch["response_mask"], dim=-1)
             seg_ground_truths = prompts.repeat(repeat_times=prompts.meta_info["n"], interleave=True).non_tensor_batch["seg_ground_truth"]
-            seg_problems = prompts.repeat(repeat_times=prompts.meta_info["n"], interleave=True).non_tensor_batch["seg_problems"]
-            
+
             def compute_mask_token_accuracy_by_grading(one_answer: str, one_ground_truth: str) -> float:
                 """Compute graded match score between two mask tokens."""
                 answer_tokens = re.findall(r"<\|[^|]*\|>", one_answer)
@@ -1253,7 +1254,7 @@ class FSDPWorker(Worker):
                     return 0.4
                 else:
                     return 0.0
-            
+
             def mask_token_accuracy_reward(answer_content: str, ground_truth: str) -> float:
                 """Compute mask token accuracy reward using graded matching."""
                 if answer_content is None:
@@ -1278,43 +1279,43 @@ class FSDPWorker(Worker):
                             max_match_score = match_score
                     recall_N += max_match_score
                 return recall_N / max_N
-            
+
             mask_token_accuracy_list = []
             format_correct_list = []
             debug_responses = []  # Collect responses for debugging
-            
+
             for i in range(len(output)):
                 cur_response_length = int(response_length[i].item())
                 valid_response_ids = response_ids[i][:cur_response_length]
                 response_str = self.tokenizer.decode(
                     valid_response_ids, skip_special_tokens=self.config.reward.skip_special_tokens
                 )
-                
+
                 # Collect response for debugging
                 debug_responses.append(f"Sample {i}:\n{response_str}\n")
-                
+
                 # Extract answer content from response
                 think_content, answer_content = extract_think_and_answer_robust(response_str)
                 # Check format correctness (should have the correct mask token format)
                 regex_pattern = r"<\|mt_start\|><\|mt_\d{4}\|><\|mt_\d{4}\|><\|mt_end\|>"
                 pred_mask_tokens = re.findall(regex_pattern, answer_content) if answer_content else []
                 format_correct = int(len(pred_mask_tokens) > 0)
-                
+
                 # Get ground truth
                 gt_text = seg_ground_truths[i]
-                
+
                 # Compute graded mask token accuracy
                 accuracy = mask_token_accuracy_reward(answer_content, gt_text)
-                
+
                 mask_token_accuracy_list.append(accuracy)
                 format_correct_list.append(format_correct)
-            
+
             output.non_tensor_batch["mask_token_accuracy"] = np.array(mask_token_accuracy_list, dtype=object)
             output.non_tensor_batch["format_correct"] = np.array(format_correct_list, dtype=object)
-            
+
             # Save all responses to file once after the loop (minimal I/O overhead)
             with open("./debug_response_new.txt", "w") as f:
-                f.write("\n".join(debug_responses))  # Only save first 5 samples to keep file small     
+                f.write("\n".join(debug_responses))  # Only save first 5 samples to keep file small
 
         # if output.meta_info['task'] == 'segmentation':
         #     # decoding text-format mask tokens to binary mask array
@@ -1339,7 +1340,7 @@ class FSDPWorker(Worker):
         #             image = Image.open(BytesIO(image["bytes"]))
         #         elif isinstance(image, bytes):
         #             image = Image.open(BytesIO(image))
-                
+
         #         if image.mode != "RGB":
         #             image = image.convert("RGB")
         #         ori_width, ori_height = image.size
@@ -1365,7 +1366,7 @@ class FSDPWorker(Worker):
         #                     code2 = -1
         #                 remap_chunk_quant_ids_error_handle = [code1, code2]
         #                 remap_quant_ids.append(remap_chunk_quant_ids_error_handle)
-                    
+
         #             if len(remap_quant_ids) == 0:
         #                 pred_masks = {'pred_masks': np.zeros((ori_height, ori_width), dtype=np.uint8)}
         #             else:
@@ -1439,7 +1440,7 @@ class FSDPWorker(Worker):
                     return 0.4
                 else:
                     return 0.0
-            
+
             def mask_token_accuracy_reward(answer_content: str, ground_truth: str) -> float:
                 """Compute mask token accuracy reward using graded matching."""
                 if answer_content is None:
@@ -1464,11 +1465,11 @@ class FSDPWorker(Worker):
                             max_match_score = match_score
                     recall_N += max_match_score
                 return recall_N / max_N
-            
+
             mask_token_accuracy_list = []
             format_correct_list = []
             debug_responses = []  # Collect responses for debugging
-            
+
             for i in range(len(output)):
                 cur_response_length = int(response_length[i].item())
                 valid_response_ids = response_ids[i][:cur_response_length]
@@ -1477,7 +1478,7 @@ class FSDPWorker(Worker):
                 )
                 # Collect response for debugging
                 debug_responses.append(f"Sample {i}:\n{response_str}\n")
-                
+
                 gt_text = seg_ground_truths[i]
 
                 if is_video_segmentation:
@@ -1502,7 +1503,7 @@ class FSDPWorker(Worker):
                     #     format_correct = 0
                     # gt_bbox = extract_bbox_from_response(seg_ground_truths[i])
                     # accuracy = compute_bbox_iou(pred_bbox, gt_bbox)
-                
+
                 mask_token_accuracy_list.append(accuracy)
                 format_correct_list.append(format_correct)
 
@@ -1511,7 +1512,7 @@ class FSDPWorker(Worker):
             output.non_tensor_batch["seg_responses"] = debug_responses
             output.non_tensor_batch["cap_responses"] = seg_problems
             output.non_tensor_batch["seg_ground_truth"] = seg_ground_truths
-            
+
             # Save all responses to file once after the loop (minimal I/O overhead)
             with open("./debug_response_cap_debug0223.txt", "w") as f:
                 f.write("\n".join(debug_responses[:32]))
@@ -1533,7 +1534,7 @@ class FSDPWorker(Worker):
         # perform recompute log_prob
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
-            
+
             output = self.actor.compute_log_prob(data=data)
             output = DataProto.from_dict(
                 tensors={"old_log_probs": output}, meta_info={"temperature": self.config.rollout.temperature}

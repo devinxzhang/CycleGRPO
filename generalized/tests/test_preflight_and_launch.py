@@ -1,7 +1,7 @@
 import json
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq

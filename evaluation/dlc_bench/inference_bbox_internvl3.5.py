@@ -13,11 +13,11 @@ import numpy as np
 import torch
 import torchvision
 from PIL import Image
-from pycocotools import mask as mask_utils
 from pycocotools.coco import COCO
 from torchvision import transforms as T
 from tqdm import tqdm
 from transformers import AutoModelForImageTextToText, AutoTokenizer
+
 
 TORCH_DTYPE_MAP = dict(fp16=torch.float16, bf16=torch.bfloat16, fp32=torch.float32)
 IMAGENET_MEAN = (0.485, 0.456, 0.406)

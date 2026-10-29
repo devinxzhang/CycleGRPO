@@ -15,23 +15,20 @@
 The main entry point to run the PPO algorithm
 """
 
-from typing import Literal, Optional, Union, cast, Tuple, List
-import os
 import re
+from typing import List, Literal, Optional, Tuple, Union, cast
+
 import hydra
-import copy
-from PIL import Image
-from io import BytesIO
 import numpy as np
 import psutil
 import torch
 import torch.distributed as dist
-from torchvision.transforms.functional import to_pil_image
 from accelerate import init_empty_weights
 from codetiming import Timer
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import CPUOffload, MixedPrecision, ShardingStrategy
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torchvision.transforms.functional import to_pil_image
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -40,6 +37,8 @@ from transformers import (
     GenerationConfig,
     PreTrainedModel,
 )
+
+
 try:
     from transformers.modeling_utils import no_init_weights  # old HF
 except ImportError:
@@ -47,6 +46,7 @@ except ImportError:
         from transformers.utils import no_init_weights  # mid HF
     except ImportError:
         from contextlib import contextmanager
+
         import torch.nn as nn
         from transformers.modeling_utils import PreTrainedModel
         @contextmanager
@@ -60,6 +60,8 @@ except ImportError:
             finally:
                 nn.Linear.reset_parameters = old_linear
                 PreTrainedModel.init_weights = old_init
+
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
 from ..models.monkey_patch import apply_ulysses_patch
 from ..protocol import DataProto
@@ -109,7 +111,7 @@ from .config import ActorConfig, CriticConfig, FSDPConfig, ModelConfig, OptimCon
 from .rollout import vLLMRollout
 from .sharding_manager import FSDPVLLMShardingManager
 from .sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
-from projects.transformers.vq_sam2 import SAM2Config, VQ_SAM2Config, VQ_SAM2
+
 
 class DirectResize:
     def __init__(self, target_length: int) -> None:
@@ -1245,7 +1247,7 @@ class FSDPWorker(Worker):
 
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
-            with Timer(name="accumulate_gradients", logger=None) as timer:
+            with Timer(name="accumulate_gradients", logger=None):
                 # Only compute gradients, don't step optimizer
                 metrics = self.actor.update_policy(data=data, do_optimizer_step=False, grad_weight=grad_weight)
 
@@ -1382,7 +1384,6 @@ class FSDPWorker(Worker):
             response_ids = output.batch["responses"]
             response_length = torch.sum(output.batch["response_mask"], dim=-1)
             seg_ground_truths = prompts.repeat(repeat_times=prompts.meta_info["n"], interleave=True).non_tensor_batch["seg_ground_truth"]
-            seg_problems = prompts.repeat(repeat_times=prompts.meta_info["n"], interleave=True).non_tensor_batch["seg_problems"]
 
             def compute_mask_token_accuracy_by_grading(one_answer: str, one_ground_truth: str) -> float:
                 """Compute graded match score between two mask tokens."""

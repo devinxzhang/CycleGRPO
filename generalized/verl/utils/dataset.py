@@ -15,15 +15,15 @@
 import hashlib
 import math
 import os
-import re
 import random
+import re
 from collections import OrderedDict, defaultdict
 from io import BytesIO
-from typing import Any, Optional, Union, Tuple, List
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from datasets import load_dataset, concatenate_datasets
+from datasets import concatenate_datasets, load_dataset
 from jinja2 import Template
 from PIL import Image, ImageDraw
 from PIL.Image import Image as ImageObject
@@ -42,9 +42,9 @@ from .cyclegrpo_profiles import (
 from .spatiotemporal import (
     ATOMIC_SPATIOTEMPORAL_SOURCE,
     SPATIOTEMPORAL_SOURCE,
+    TRAJECTORY_LOCALIZATION_SOURCE,
     TRAJECTORY_SPATIOTEMPORAL_SOURCE,
     TRAJECTORY_UNDERSTANDING_SOURCE,
-    TRAJECTORY_LOCALIZATION_SOURCE,
 )
 
 
@@ -1252,47 +1252,6 @@ Coordinates must be integers normalized to [0,1000]. Repeat <box>...</box> befor
                 )
             return messages
 
-    def _get_image_and_mask(self, sample: dict[str, Any]):
-        """
-        从样本中获取image path和随机采样的一个mask_2d
-        支持两种格式:
-        1. mask_2d直接嵌入文本中: <|mt_start|><|mt_xxxx|><|mt_xxxx|><|mt_end|>
-        2. mask_2d在```json```代码块中
-
-        Args:
-            sample: 包含'image'和'conversations'字段的样本字典
-
-        Returns:
-            tuple: (image_path, sampled_mask_2d)
-                如果没有找到mask_2d，返回 (image_path, None)
-        """
-        # 1. 获取images路径
-        image_path = sample['image']
-        if isinstance(image_path, list):
-            image_path = image_path[0]
-
-        # 2. 从gpt回答中提取mask_2d
-        gpt_value = sample['conversations'][1]['value']
-
-        # 方式1: 尝试从```json```代码块中提取
-        json_match = re.search(r'```json\s*(.*?)\s*```', gpt_value, re.DOTALL)
-        if json_match:
-            try:
-                result = json.loads(json_match.group(1))
-                all_mask_2d = [item['mask_2d'] for item in result]
-                if all_mask_2d:
-                    return image_path, random.choice(all_mask_2d)
-            except:
-                pass
-
-        # 方式2: 直接从文本中提取mask_2d格式
-        pattern = r'<\|mt_start\|><\|mt_\d+\|><\|mt_\d+\|><\|mt_end\|>'
-        all_mask_2d = re.findall(pattern, gpt_value)
-        if all_mask_2d:
-            return image_path, random.choice(all_mask_2d)
-
-        return image_path, None
-
     def _gen_seg_preprocess(self, example: dict[str, Any]):
         seg_messages = self._build_gen_seg_messages(example)
         example['cap_responses'] = example.pop(self.seg_prompt_key)
@@ -2255,8 +2214,8 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    from vllm import LLM, SamplingParams
     from transformers import AutoProcessor
+    from vllm import LLM, SamplingParams
 
     from ..protocol import DataProto
 
@@ -2368,7 +2327,7 @@ if __name__ == "__main__":
         is_video = "videos" in raw_example and raw_example["videos"] is not None
         is_image = "images" in raw_example and raw_example["images"] is not None
 
-        print(f"\n  [Caption 任务]")
+        print("\n  [Caption 任务]")
         print(f"  cap_prompt: {sample.get('cap_prompt', None)}")
 
         cap_task_dict = {
@@ -2418,12 +2377,12 @@ if __name__ == "__main__":
         # print(f"  seg_ground_truth: {str(seg_gt)}")
 
         # ========== 多模态数据信息 ==========
-        print(f"\n  [多模态信息]")
+        print("\n  [多模态信息]")
         if is_video:
-            print(f"  类型: 视频")
+            print("  类型: 视频")
             print(f"  视频路径: {raw_example['videos']}")
         elif is_image:
-            print(f"  类型: 图像")
+            print("  类型: 图像")
             img_paths = raw_example['images']
             if isinstance(img_paths, list):
                 print(f"  图像数量: {len(img_paths)}")
@@ -2431,7 +2390,7 @@ if __name__ == "__main__":
             else:
                 print(f"  图像路径: {img_paths}")
         else:
-            print(f"  类型: 纯文本")
+            print("  类型: 纯文本")
 
     print(f"\n{'=' * 60}")
     print(f"测试完成，共处理 {len(indices)} 个样本")

@@ -6,24 +6,24 @@
 # --------------------------------------------------------
 
 import argparse
-import json
-import os
-import copy
 import base64
 import io
+import json
+import os
 
+import hydra
 import numpy as np
 import torch
 import torchvision
 from PIL import Image
 from pycocotools import mask as mask_utils
 from pycocotools.coco import COCO
-from tqdm import tqdm
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 from torchvision.transforms.functional import to_pil_image
-import hydra
+from tqdm import tqdm
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-from projects.transformers.vq_sam2 import SAM2Config, VQ_SAM2Config, VQ_SAM2
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
+
 
 TORCH_DTYPE_MAP = dict(fp16=torch.float16, bf16=torch.bfloat16, fp32=torch.float32)
 
@@ -127,12 +127,12 @@ def encode_mask_to_tokens(vq_sam2, sam2_image_processor, image, binary_masks, or
 
     masks = torch.stack([torch.from_numpy(np.ascontiguousarray(x.copy())) for x in binary_masks])
     boxes = torchvision.ops.masks_to_boxes(masks)
-    
+
     whwh = torch.as_tensor([[ori_width, ori_height, ori_width, ori_height]])
     boxes_normalized = boxes / whwh
     boxes_normalized = boxes_normalized.to(vq_sam2.device)
     masks_list = [m.unsqueeze(0).to(vq_sam2.device) for m in masks]
-    
+
     with torch.no_grad():
         vq_sam2_output = vq_sam2(
             sam2_pixel_values,
@@ -144,7 +144,7 @@ def encode_mask_to_tokens(vq_sam2, sam2_image_processor, image, binary_masks, or
     quant_codes = vq_sam2_output.quant_codes.squeeze().cpu().numpy().astype(np.int32).tolist()
     remap_quant_codes = [depth_idx * CODEBOOK_SIZE + quant_code for depth_idx, quant_code in enumerate(quant_codes)]
     mask_tokens_str = MT_START_TOKEN + ''.join([MT_CONTEXT_TOKEN.format(str(code).zfill(4)) for code in remap_quant_codes]) + MT_END_TOKEN
-    
+
     return mask_tokens_str, boxes
 
 
@@ -172,7 +172,7 @@ def main():
 
     # Build Qwen3VL model
     model = Qwen3VLForConditionalGeneration.from_pretrained(
-        args.model_path, torch_dtype="auto"
+        args.model_path, torch_dtype=data_dtype
     ).cuda().eval()
 
     processor = AutoProcessor.from_pretrained(args.model_path)
@@ -182,7 +182,7 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, '../../projects/transformers/vq_sam2/sam2/sam2_configs')
     config_path = os.path.abspath(config_path)
-    
+
     with hydra.initialize_config_dir(version_base=None, config_dir=config_path):
         sam2_config = SAM2Config(
             cfg_path="sam2.1_hiera_l.yaml",
@@ -290,12 +290,12 @@ def main():
                 cropped_sam2_pixel_values = cropped_sam2_pixel_values.unsqueeze(0).to(vq_sam2.dtype).to(vq_sam2.device)
 
                 cropped_masks = torch.stack([torch.from_numpy(np.ascontiguousarray(mask.copy()[y1:y2, x1:x2]))])
-                
+
                 if resized_crop_image is not None:
                     resized_crop_masks = torch.nn.functional.interpolate(cropped_masks.unsqueeze(0), size=(new_height, new_width), mode='bilinear')
                     resized_crop_masks = resized_crop_masks[0] > 0.5
                     cropped_masks = resized_crop_masks
-                
+
                 crop_height_mask, crop_width_mask = cropped_masks.shape[-2:]
                 cropped_boxes = torchvision.ops.masks_to_boxes(cropped_masks)
                 crop_whwh = torch.as_tensor([[crop_width_mask, crop_height_mask, crop_width_mask, crop_height_mask]])
@@ -310,13 +310,13 @@ def main():
                         cropped_boxes,
                         reconstruct_mask=True,
                     )
-                
+
                 crop_quant_codes = cropped_vq_sam2_output.quant_codes.squeeze().detach().cpu().numpy().astype(np.int32).tolist()
                 remap_crop_quant_codes = [depth_idx * CODEBOOK_SIZE + quant_code for depth_idx, quant_code in enumerate(crop_quant_codes)]
                 zoom_in_mask_tokens_str = MT_START_TOKEN + ''.join([MT_CONTEXT_TOKEN.format(str(code).zfill(4)) for code in remap_crop_quant_codes]) + MT_END_TOKEN
 
                 question = "Given a detailed description of this region {SEG}. Zoom in with the perspective as ".format(SEG=global_mask_tokens_str)
-                
+
                 # Encode images to base64
                 buffer = io.BytesIO()
                 if resized_crop_image is None:

@@ -33,17 +33,16 @@ import torch
 from ray.experimental.tqdm_ray import tqdm
 from torchdata.stateful_dataloader import StatefulDataLoader
 from transformers import PreTrainedTokenizer, ProcessorMixin
-from torch.utils.data._utils.collate import default_collate
 
 from ..protocol import DataProto, pad_dataproto_to_divisor, unpad_dataproto
 from ..single_controller.base import Worker
 from ..single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
 from ..single_controller.ray.base import create_colocated_worker_cls
 from ..utils import torch_functional as VF
-from ..utils.dataset import collate_fn as mixed_route_collate_fn
 from ..utils.checkpoint import CHECKPOINT_TRACKER, find_latest_ckpt, remove_obsolete_ckpt
 from ..utils.checkpoint.fsdp_hf_merger import merge_fsdp_actor_to_hf
 from ..utils.cyclegrpo_profiles import NESTED_CYCLE_SOURCES, SPATIOTEMPORAL_CYCLE_SOURCES
+from ..utils.dataset import collate_fn as mixed_route_collate_fn
 from ..utils.logger import Tracker
 from ..utils.py_functional import convert_dict_to_str, timer, unflatten_dict
 from ..utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
@@ -71,7 +70,6 @@ from .metrics import (
     compute_timing_metrics,
     reduce_metrics,
 )
-from pycocotools import mask as mask_utils
 
 
 def get_inner_rollout_n() -> int:
@@ -1051,9 +1049,13 @@ class RayPPOTrainer:
         world_size = self.actor_rollout_ref_wg.world_size
         n_real = len(rows_in)
         while len(rows_in) % world_size != 0:
-            rows_in.append(rows_in[0]); rows_am.append(rows_am[0]); rows_pos.append(rows_pos[0])
-            rows_resp.append(rows_resp[0]); rows_rm.append(rows_rm[0])
-            mm_list.append(mm_list[0]); uid_list.append(uid_list[0])
+            rows_in.append(rows_in[0])
+            rows_am.append(rows_am[0])
+            rows_pos.append(rows_pos[0])
+            rows_resp.append(rows_resp[0])
+            rows_rm.append(rows_rm[0])
+            mm_list.append(mm_list[0])
+            uid_list.append(uid_list[0])
 
         judge_data = DataProto.from_single_dict(
             {
@@ -1254,8 +1256,8 @@ class RayPPOTrainer:
         )
 
         # prepare gen_batch for generation of segmentation training
-        task_dict = {k.replace(f'seg_', ''): gen_seg_batch.batch.pop(k) for k in [f'seg_input_ids', f'seg_attention_mask', f'seg_position_ids']}
-        task_dict.update({k.replace(f'seg_', ''): gen_seg_batch.non_tensor_batch.pop(k) for k in [f'seg_raw_prompt_ids', f'seg_multi_modal_data']})
+        task_dict = {k.replace('seg_', ''): gen_seg_batch.batch.pop(k) for k in ['seg_input_ids', 'seg_attention_mask', 'seg_position_ids']}
+        task_dict.update({k.replace('seg_', ''): gen_seg_batch.non_tensor_batch.pop(k) for k in ['seg_raw_prompt_ids', 'seg_multi_modal_data']})
         gen_batch = DataProto.from_single_dict(task_dict, meta_info=batch.meta_info)
         gen_batch.meta_info.update({'task': 'segmentation'})
         # Only responses need to cross the network for this inner rollout.
@@ -1750,7 +1752,6 @@ class RayPPOTrainer:
                     # Case 1: Both tasks - Use gradient accumulation for cap_batch and seg_batch
                     cap_batch_size = len(cap_batch) if cap_batch is not None else 0
                     seg_batch_size = len(seg_batch) if seg_batch is not None else 0
-                    total_size = cap_batch_size + seg_batch_size
 
                     # Caption 和 Segmentation 各占 0.5
                     cap_grad_weight = 0.5

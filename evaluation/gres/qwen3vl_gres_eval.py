@@ -1,34 +1,28 @@
 import argparse
-import copy
+import json
 import math
 import os
+import re
 import sys
 import time
-import torch
-import torchvision
-import tqdm
-from pycocotools import mask as mask_utils
-import numpy as np
-import random
-import re
-from PIL import Image
-import json
-import uuid
+
 import hydra
-
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-
-
-from qwen_vl_utils import process_vision_info
+import numpy as np
+import torch
+import tqdm
+from PIL import Image
+from pycocotools import mask as mask_utils
 from torchvision.transforms.functional import to_pil_image
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 from projects.vlm.tokenmask.evaluation.grefer import G_REFER
+from projects.vlm.tokenmask.evaluation.utils import AverageMeter, Summary, intersectionAndUnionGPU
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from input_checks import require_inputs  # noqa: E402
-from result_store import (count_current_results, load_cases, load_current_result,
-                          make_run_id, save_result)
+from result_store import count_current_results, load_cases, load_current_result, make_run_id, save_result
 
 
 class DirectResize:
@@ -56,7 +50,7 @@ def load_dataset(split, grefs_dir, out_path):
     """Build grefcoco_<split>.json from the gRefCOCO release (grefs(unc).json + instances.json)."""
     refer_api = G_REFER(GREFS_COCO_PREFIX, os.path.join(grefs_dir, 'grefs(unc).json'),
                         os.path.join(grefs_dir, 'instances.json'))
-    
+
     ref_ids_val = refer_api.getRefIds(split=split)
     images_ids_val = refer_api.getImgIds(ref_ids=ref_ids_val)
     refs_val = refer_api.loadRefs(ref_ids=ref_ids_val)
@@ -81,7 +75,6 @@ def load_dataset(split, grefs_dir, out_path):
         image_info = refer_seg_ds["images"][index]
         image_path = image_info["file_name"]
         image_id = image_info["id"]
-        image_size = image_info["width"], image_info["height"]
 
         refs = img2refs[image_id]
         if len(refs) == 0:
@@ -93,7 +86,6 @@ def load_dataset(split, grefs_dir, out_path):
             for sent in ref["sentences"]:
                 sents.append(sent["sent"].strip().lower())
                 ann_ids.append(ref["ann_id"])
-        sampled_sents = sents
         sampled_ann_ids = ann_ids
 
         anno_masks = []
@@ -146,7 +138,7 @@ def load_dataset(split, grefs_dir, out_path):
                         assert m.ndim == 2
                         m = m[..., np.newaxis]
             m = np.sum(m, axis=2)
-            anno_masks.append(m)   
+            anno_masks.append(m)
 
         for sent, binary_mask in zip(sents, anno_masks):
             assert len(binary_mask.shape) == 2
@@ -159,7 +151,7 @@ def load_dataset(split, grefs_dir, out_path):
                 "phrase": sent,
                 "segmentation": rle,
             })
-    
+
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, 'w') as f:
         json.dump(all_items, f)
@@ -262,17 +254,17 @@ def extract_mt_token_ids_v2(text):
 def find_first_index(arr, value):
     """
     在NumPy数组中找到第一个指定值的第一个出现的索引
-    
+
     参数:
         arr: NumPy数组
         value: 要查找的值
-        
+
     返回:
         第一个匹配值的索引，如果没有找到则返回-1
     """
     # 使用where找到所有匹配值的索引
     indices = np.where(arr == value)[0]
-    
+
     # 返回第一个索引，如果没有找到则返回-1
     return indices[0] if len(indices) > 0 else -1
 
@@ -300,9 +292,6 @@ def fix_mt_format_comprehensive(text):
     replacement_too_few_no_end = r'\1\2<|mt_9999|><|mt_end|>'
     text = re.sub(pattern_too_few_no_end, replacement_too_few_no_end, text)
     return text
-
-
-from projects.vlm.tokenmask.evaluation.utils import Summary, AverageMeter, intersectionAndUnionGPU
 
 
 def metric(args, all_data_dict, run_id):
@@ -353,7 +342,7 @@ def metric(args, all_data_dict, run_id):
         if no_target and no_prediction:
             this_giou[1] = 1.0  # empty target with empty prediction is correct
         g_iou_meter.update(this_giou)
-        
+
     # inter_meter.all_reduce()
     # union_meter.all_reduce()
     # g_iou_meter.all_reduce()
@@ -374,7 +363,7 @@ def metric(args, all_data_dict, run_id):
     log_stats["g_iou"] = round(g_iou * 100, 2)
     log_stats["c_iou"] = round(c_iou * 100, 2)
     print(log_stats)
-        
+
 def maybe_metric(all_data_dict, args, run_id):
     """Compute the GRES metric once EVERY shard has written its {case_id}.json.
 
@@ -472,11 +461,10 @@ def main():
     _end_ = min(_start_ + chunk_size, rows)
     print(f"[task {args.task_id}/{args.num_tasks}] rows {_start_}:{_end_} of {rows}")
 
-    count = 0
     for data_dict in tqdm.tqdm(all_data_dict[_start_:_end_]):
         image_path = data_dict['image']
         image_path = resolve_image_path(image_path, args.coco_root)
-        
+
         phrase = data_dict['phrase']
         rle = data_dict['segmentation']
         case_id = data_dict['case_id']
@@ -499,7 +487,7 @@ def main():
         # print("GT RLE: ", rle)
 
         question = f"Please segment {phrase} in this image."
-        
+
         if load_current_result(args.save_dir, data_dict, run_id) is not None:
             print(f"case {case_id} already complete for this run")
             continue
@@ -528,7 +516,7 @@ def main():
 
         # Inference: Generation of the output
         generated_ids = model.generate(
-            **inputs, 
+            **inputs,
             max_new_tokens=128,
             do_sample=False,  # 关闭采样，使用贪婪解码
             top_p=1.0,  # 配合do_sample=False使用

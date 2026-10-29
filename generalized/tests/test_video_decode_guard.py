@@ -23,11 +23,14 @@ def test_native_decode_timeout_is_killable_and_helper_restarts():
 
     # The timed-out child was killed.  A subsequent request must start a new
     # helper and complete normally rather than inheriting the stuck decoder.
+    # This timeout has to cover a cold ``spawn`` start, which imports torch and
+    # can take far longer than the decode itself on a loaded host; what is under
+    # test here is the restart, not its latency.
     assert (
         guarded_video_decode(
             "_test_sleep",
             0.0,
-            timeout_s=2.0,
+            timeout_s=60.0,
             media_path="synthetic-good-video.mp4",
             context="unit-test-restart",
         )

@@ -6,11 +6,10 @@
 # --------------------------------------------------------
 
 import argparse
-import json
-import os
-import copy
 import base64
 import io
+import json
+import os
 
 import numpy as np
 import torch
@@ -19,8 +18,8 @@ from PIL import Image
 from pycocotools import mask as mask_utils
 from pycocotools.coco import COCO
 from tqdm import tqdm
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-from torchvision.transforms.functional import to_pil_image
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+
 
 TORCH_DTYPE_MAP = dict(fp16=torch.float16, bf16=torch.bfloat16, fp32=torch.float32)
 
@@ -110,7 +109,7 @@ def main():
 
     # Build Qwen2.5-VL model (vanilla, no VQ-SAM2)
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        args.model_path, torch_dtype="auto"
+        args.model_path, torch_dtype=data_dtype
     ).cuda().eval()
 
     processor = AutoProcessor.from_pretrained(args.model_path)
@@ -199,7 +198,7 @@ def main():
                     resized_crop_image = None
 
                 question = f"Given a detailed description of the region at bounding box {bbox_str}. Zoom in with the perspective as"
-                
+
                 # Encode images to base64
                 buffer = io.BytesIO()
                 if resized_crop_image is None:

@@ -1,12 +1,18 @@
 .PHONY: build check commit quality style test
 
-# Paths held to ruff. The forked verl trees (verl/, generalized/verl/) still
-# carry upstream lint debt and are excluded until they are cleaned up.
-LINT_PATHS := tests \
+# Code written for this release: held to ruff's full rule set, formatting
+# included.
+FORMAT_PATHS := tests \
 	evaluation/input_checks.py evaluation/test_input_checks.py \
 	evaluation/groundingsuite/gs_result_store.py evaluation/groundingsuite/test_gs_result_store.py \
 	projects/rl/datasets/check_rl_parquet.py \
 	verl/trainer/resolve_config.py generalized/verl/trainer/resolve_config.py
+
+# The forked runtimes and the evaluation scripts are linted but keep their
+# existing formatting, so that diffs against upstream EasyR1/veRL stay readable.
+# projects/ is the research tree this release was carved out of; it is not
+# linted beyond the files listed above.
+LINT_PATHS := $(FORMAT_PATHS) verl generalized/verl generalized/tests evaluation
 
 # CPU-only suites: spatial + video runtimes and the evaluation helpers.
 TEST_PATHS := tests generalized/tests evaluation
@@ -22,11 +28,11 @@ commit:
 
 quality:
 	ruff check $(LINT_PATHS)
-	ruff format --check $(LINT_PATHS)
+	ruff format --check $(FORMAT_PATHS)
 
 style:
 	ruff check $(LINT_PATHS) --fix
-	ruff format $(LINT_PATHS)
+	ruff format $(FORMAT_PATHS)
 
 test:
 	python3 -m pytest -q $(TEST_PATHS)

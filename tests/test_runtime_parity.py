@@ -43,7 +43,6 @@ ALLOW_DIVERGENT = frozenset(
         "workers/reward/function.py",
         "workers/rollout/config.py",
         "workers/rollout/vllm_rollout_spmd.py",
-        "workers/sharding_manager/fsdp_vllm.py",
     }
 )
 

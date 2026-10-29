@@ -1,31 +1,34 @@
 import argparse
-import copy
+import json
 import math
 import os
+import re
 import sys
 import time
+
+import hydra
+import numpy as np
 import torch
 import torchvision
 import tqdm
-from pycocotools import mask as mask_utils
-import numpy as np
-import random
-import re
 from PIL import Image
-import json
-import uuid
-import hydra
-
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-
-from qwen_vl_utils import process_vision_info
+from pycocotools import mask as mask_utils
 from torchvision.transforms.functional import to_pil_image
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from gs_result_store import (  # noqa: E402
+    count_current_results,
+    load_cases,
+    load_current_result,
+    make_run_id,
+    save_result,
+)
 from input_checks import require_inputs  # noqa: E402
-from gs_result_store import (count_current_results, load_cases, load_current_result,  # noqa: E402
-                             make_run_id, save_result)
+
 
 class DirectResize:
     def __init__(self, target_length: int) -> None:
@@ -133,17 +136,17 @@ def extract_mt_token_ids_v2(text):
 def find_first_index(arr, value):
     """
     在NumPy数组中找到第一个指定值的第一个出现的索引
-    
+
     参数:
         arr: NumPy数组
         value: 要查找的值
-        
+
     返回:
         第一个匹配值的索引，如果没有找到则返回-1
     """
     # 使用where找到所有匹配值的索引
     indices = np.where(arr == value)[0]
-    
+
     # 返回第一个索引，如果没有找到则返回-1
     return indices[0] if len(indices) > 0 else -1
 
@@ -259,18 +262,16 @@ def main():
     _end_ = min(_start_ + chunk_size, rows)
     print(f"[task {args.task_id}/{args.num_tasks}] rows {_start_}:{_end_} of {rows}")
 
-    count = 0
     for data_dict in tqdm.tqdm(all_data_dict[_start_:_end_]):
         image_file = data_dict['image_path']
         item_idx = data_dict['idx']
-        label = data_dict['label']
         caption = data_dict['caption']
         class_id = data_dict['class_id']
 
         image_path = os.path.join(args.image_root, image_file)
         if load_current_result(args.save_dir, data_dict, run_id) is not None:
             continue
-    
+
         try:
             image = load_image_with_retry(image_path)
         except Exception as e:
@@ -303,7 +304,7 @@ def main():
 
         # Inference: Generation of the output
         generated_ids = model.generate(
-            **inputs, 
+            **inputs,
             max_new_tokens=512,
             do_sample=False,  # 关闭采样，使用贪婪解码
             top_p=1.0,  # 配合do_sample=False使用
@@ -382,7 +383,7 @@ def main():
         _pred_masks = (_pred_masks > 0).astype(np.uint8)
         try:
             pred_box = torchvision.ops.masks_to_boxes(torch.from_numpy(_pred_masks)).cpu().numpy().tolist()
-        except:
+        except (IndexError, RuntimeError, ValueError):
             pred_box = [0, 0, 0, 0]
         _pred_masks = mask_to_rle(_pred_masks)[0]
         prediction = {'idx': item_idx, 'image_path': image_file, 'predicted_box': pred_box, 'predicted_segmentation': _pred_masks, 'class_id': class_id}

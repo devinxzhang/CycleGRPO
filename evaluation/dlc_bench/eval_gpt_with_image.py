@@ -31,11 +31,11 @@ import os
 import inflect
 import numpy as np
 import openai
+from cache_utils import evaluation_cache_key, reusable_responses
 from PIL import Image
 from pycocotools.coco import COCO
 from tqdm import tqdm
 
-from cache_utils import evaluation_cache_key, reusable_responses
 
 # Define Azure OpenAI details. Credentials and endpoints must be supplied by
 # the user; never commit them to the repository.

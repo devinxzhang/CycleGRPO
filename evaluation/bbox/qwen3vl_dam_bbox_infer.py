@@ -1,23 +1,17 @@
 import argparse
+import base64
 import copy
-import math
+import io
+import json
 import os
+
+import numpy as np
 import torch
 import torchvision
-import tqdm
-from pycocotools import mask as mask_utils
-import numpy as np
-import random
-import re
 from PIL import Image
-import json
-import uuid
-import base64
-import io
+from pycocotools import mask as mask_utils
 from tqdm import tqdm
-
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-from torchvision.transforms.functional import to_pil_image
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
 
 def parse_args():
@@ -74,15 +68,14 @@ def main():
     # Load DLC-Bench data
     with open(args.data_path, 'r') as f:
         eval_samples = json.load(f)
-    
+
     all_items = []
     for eval_sample in tqdm(eval_samples):
         image_name = eval_sample['image_name']
         save_mask_samples = []
-        
+
         for mask_sample in eval_sample['mask_samples']:
             mask_anno = mask_sample['segmentation']
-            category_name = mask_sample['class_name']
 
             image_path = os.path.join(args.image_folder, image_name)
 
@@ -94,7 +87,7 @@ def main():
             masks = torch.stack([torch.from_numpy(np.ascontiguousarray(x.copy())) for x in binary_masks])
             boxes = torchvision.ops.masks_to_boxes(masks)
             x1, y1, x2, y2 = boxes.squeeze().cpu().numpy().tolist()
-            
+
             # Calculate box area ratio
             boxes_w = x2 - x1
             boxes_h = y2 - y1
@@ -207,7 +200,7 @@ def main():
 
             # Inference: Generation of the output
             generated_ids = model.generate(
-                **inputs, 
+                **inputs,
                 max_new_tokens=1024,
                 do_sample=False,
                 top_p=1.0,
@@ -222,13 +215,13 @@ def main():
             save_sample = copy.deepcopy(mask_sample)
             save_sample.update({'pred_caption': output_text[0].replace('<|im_end|>', '')})
             save_mask_samples.append(save_sample)
-            
+
         copy_eval_sample = copy.deepcopy(eval_sample)
         copy_eval_sample.update({'mask_samples': save_mask_samples})
         all_items.append(copy_eval_sample)
 
     print(len(all_items), " items")
-    
+
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, 'w') as f:
         json.dump(all_items, f, indent=4)
@@ -236,5 +229,5 @@ def main():
     print(f"Saved results to {args.output}")
 
 
-if __name__ == '__main__':     
+if __name__ == '__main__':
     main()

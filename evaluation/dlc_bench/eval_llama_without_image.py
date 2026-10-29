@@ -19,10 +19,10 @@ import json
 import os
 
 import inflect
+from cache_utils import evaluation_cache_key, reusable_responses
 from openai import OpenAI
 from tqdm import tqdm
 
-from cache_utils import evaluation_cache_key, reusable_responses
 
 prompt_eval = """Answer the multiple-choice question based on the text description of an object in an image. You need to follow these rules:
 1. Do not output any reasoning. Do not perform correction. Please output exactly one answer from the choices for each question. Do not repeat the question.
@@ -356,7 +356,9 @@ if __name__ == "__main__":
 
     always_print = print
     if args.quiet:
-        print = lambda *args, **kwargs: None
+
+        def print(*args, **kwargs):
+            pass
 
     # v3 is from v2.1
     eval_file = os.path.splitext(args.pred)[0] + f"_eval{args.suffix}.json"

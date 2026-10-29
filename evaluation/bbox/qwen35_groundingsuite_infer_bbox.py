@@ -1,14 +1,13 @@
 import argparse
-import os
-import sys
-import torch
-import torchvision
-import tqdm
-import re
-from PIL import Image
 import json
+import os
+import re
+import sys
 
+import tqdm
+from PIL import Image
 from transformers import AutoProcessor
+
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from input_checks import require_inputs  # noqa: E402
@@ -149,7 +148,6 @@ Provide the bounding box in the format [x1, y1, x2, y2] where coordinates are no
     for data_dict in tqdm.tqdm(all_data_dict[_start_:_end_]):
         image_file = data_dict['image_path']
         item_idx = data_dict['idx']
-        label = data_dict['label']
         caption = data_dict['caption']
         class_id = data_dict['class_id']
 

@@ -28,9 +28,7 @@ import io
 import json
 import os
 
-import inflect
 import numpy as np
-import openai
 from PIL import Image
 from pycocotools.coco import COCO
 from scipy import ndimage
@@ -77,7 +75,7 @@ if __name__ == "__main__":
     # Load samtok and cycle_grpo captions
     samtok_caption_file = './quantitive_comparison/dlc_bench/samtok.json'
     grpo_caption_file = './quantitive_comparison/dlc_bench/cycle_grpo.json'
-    
+
     with open(samtok_caption_file, 'r') as f:
         samtok_captions = json.load(f)
     with open(grpo_caption_file, 'r') as f:
@@ -110,10 +108,10 @@ if __name__ == "__main__":
 
         # 创建输出图像
         overlay_img = img_np.copy()
-        
+
         # 将非mask区域变暗
         overlay_img[~mask_np] = (img_np[~mask_np] * darken_factor).astype(np.uint8)
-        
+
         # 将mask区域覆盖为半透明颜色
         overlay_img[mask_np] = (
             (1 - alpha) * img_np[mask_np] + alpha * mask_color
@@ -131,15 +129,15 @@ if __name__ == "__main__":
         result_img = Image.fromarray(overlay_img)
         save_path = os.path.join(save_folder, f"{sample_id}.png")
         result_img.save(save_path)
-        
+
         # 保存原图
         original_save_path = os.path.join(save_folder, f"{sample_id}_original.png")
         img.save(original_save_path)
-        
+
         # 保存samtok和cycle_grpo的caption
         samtok_caption = samtok_captions.get(sample_id, "N/A")
         grpo_caption = grpo_captions.get(sample_id, "N/A")
-        
+
         caption_save_path = os.path.join(save_folder, f"{sample_id}_captions.txt")
         with open(caption_save_path, 'w', encoding='utf-8') as f:
             f.write(f"Sample ID: {sample_id}\n")
@@ -150,5 +148,5 @@ if __name__ == "__main__":
             f.write("Cycle-GRPO Caption:\n")
             f.write("-" * 30 + "\n")
             f.write(f"{grpo_caption}\n")
-        
+
         print(f"Saved: {save_path}")
