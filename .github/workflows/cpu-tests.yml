@@ -17,7 +17,7 @@ jobs:
         run: |
           uv venv
           uv pip install -r requirements-test.txt
-          uv pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          uv pip install torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
       - name: make check
         run: |
           source .venv/bin/activate
