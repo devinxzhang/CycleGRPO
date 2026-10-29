@@ -1,6 +1,6 @@
-from transformers import PretrainedConfig
 from hydra import compose
 from omegaconf import OmegaConf
+from transformers import PretrainedConfig
 
 
 class SAM2Config(PretrainedConfig):
@@ -40,23 +40,23 @@ class SAM2Config(PretrainedConfig):
                 # "++model.fill_hole_area=8",
             ]
         hydra_overrides.extend(hydra_overrides_extra)
-        
+
         # Read config and init model
         cfg = compose(config_name=cfg_path, overrides=hydra_overrides)
         OmegaConf.resolve(cfg)
         self.cfg = cfg
-    
+
     def to_dict(self):
         """重写 to_dict 方法以处理 OmegaConf 对象"""
         output = super().to_dict()
-        
+
         # 处理 cfg 中的 OmegaConf 对象
         if hasattr(self, 'cfg') and self.cfg is not None:
             if hasattr(self.cfg, '_content') and hasattr(self.cfg, 'to_container'):
                 output['cfg'] = OmegaConf.to_container(self.cfg, resolve=True)
             else:
                 output['cfg'] = self.cfg
-        
+
         return output
 
 
@@ -99,11 +99,11 @@ class VQ_SAM2Config(PretrainedConfig):
         self.vq_loss_weight = vq_loss_weight
 
 
-    
+
     def to_dict(self):
         """重写 to_dict 方法以处理 OmegaConf 对象"""
         output = super().to_dict()
-        
+
         # 处理 sam2_config 中的 OmegaConf 对象
         if hasattr(self, 'sam2_config') and self.sam2_config is not None:
             sam2_dict = {}
@@ -114,5 +114,5 @@ class VQ_SAM2Config(PretrainedConfig):
                 else:
                     sam2_dict[key] = value
             output['sam2_config'] = sam2_dict
-        
+
         return output

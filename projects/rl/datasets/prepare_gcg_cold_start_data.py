@@ -1,10 +1,11 @@
-import os
-import json
-import tqdm
-import time
-from openai import OpenAI
 import base64
+import json
+import os
 import re
+
+import tqdm
+from openai import OpenAI
+
 
 def clean_up():
     QUESTION_TEMPLATE = "{content} A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>"
@@ -32,7 +33,7 @@ def clean_up():
                 skip_this_case = True
         else:
             skip_this_case = True
-        
+
         if skip_this_case:
             continue
 
@@ -49,10 +50,10 @@ def clean_up():
             'conversations': conversations,
         }
         all_cold_start_data.append(ret_data_dict)
-    
+
     with open(f'./cold_start_data/gcg_cold_start_data{len(all_cold_start_data)//1000}k.json', 'w') as f:
         json.dump(all_cold_start_data, f, indent=4)
-    
+
     print(f"{len(all_cold_start_data)} items")
 
 def filter_no_evidence_items(source_file):
@@ -70,7 +71,7 @@ def filter_no_evidence_items(source_file):
                 save_items.append(item)
         else:
             continue
-    
+
     with open(source_file.replace('.json', '_evidence.json'), 'w') as f:
         json.dump(save_items, f, indent=4)
 
@@ -94,7 +95,7 @@ def main():
 
     with open('./data/tokenmask_data_256x2/mask_generation_gcg_exclude_grandf195k.json', 'r') as f:
         data_dict_list = json.load(f)
-    
+
     stride = len(data_dict_list) // 10000
     indices = list(range(0, len(data_dict_list), stride))
     for idx in tqdm.tqdm(indices):
@@ -147,7 +148,7 @@ if __name__ == '__main__':
         subset1 = json.load(f)
     with open('./cold_start_data/gcg_cold_start_data10k_evidence.json', 'r') as f:
         subset2 = json.load(f)
-    
+
     image_file_2_items = {}
     for item in subset1:
         if item['image'] not in image_file_2_items:

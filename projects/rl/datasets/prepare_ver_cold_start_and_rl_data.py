@@ -1,9 +1,11 @@
-import os
 import json
-import tqdm
+import os
 import random
-import tensorflow as tf
 import re
+
+import tensorflow as tf
+import tqdm
+
 
 def read_tfrecord_files(file_pattern, feature_description=None, num_parallel_reads=4, batch_size=32,
                         shuffle_buffer_size=10000):
@@ -99,7 +101,7 @@ def main():
         with open(os.path.join('./temp_data_256x2_0927/ver', json_file), 'r') as f:
             json_data = json.load(f)
             all_data_dict.extend(json_data)
-    
+
     rl_subset, cold_start_subset = split_list_random(all_data_dict, k=4000, seed=42)
 
     # rl subset
@@ -137,11 +139,11 @@ def main():
     rl_subset = list(rl_subset_dict.values())
     with open(f'./cold_start_data/ver_rl_source{len(rl_subset)}k.json', 'w') as f:
         json.dump(rl_subset, f, indent=4)
-    
+
     with open(f"./cold_start_data/ver_cold_start_data{len(cold_start_subset)//1000}k.json", 'w') as f:
         json.dump(cold_start_subset, f, indent=4)
 
 if __name__ == "__main__":
     main()
-    
+
 

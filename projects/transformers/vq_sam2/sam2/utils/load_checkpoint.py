@@ -1,8 +1,9 @@
 import logging
 
-from mmengine.runner.checkpoint import CheckpointLoader
-from mmengine.logging.logger import print_log
 from huggingface_hub import hf_hub_download
+from mmengine.logging.logger import print_log
+from mmengine.runner.checkpoint import CheckpointLoader
+
 
 HF_HUB_PREFIX = 'hf-hub:'
 

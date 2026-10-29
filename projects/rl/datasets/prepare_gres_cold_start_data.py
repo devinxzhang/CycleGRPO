@@ -1,12 +1,13 @@
-import os
-import json
-import tqdm
-import time
-from openai import OpenAI
 import base64
+import json
+import os
+import random
 import re
 
-import random
+import tqdm
+from openai import OpenAI
+
+
 def split_list_random(lst, k=4000, seed=None):
     """
     从 lst 中随机选取 k 个元素作为子集A，剩余作为子集B。
@@ -49,7 +50,7 @@ def clean_up():
                 skip_this_case = True
         else:
             skip_this_case = True
-        
+
         if skip_this_case:
             continue
 
@@ -66,10 +67,10 @@ def clean_up():
             'conversations': conversations,
         }
         all_cold_start_data.append(ret_data_dict)
-    
+
     with open(f'./cold_start_data/gres_no_target_cold_start_data{len(all_cold_start_data)//1000}k.json', 'w') as f:
         json.dump(all_cold_start_data, f, indent=4)
-    
+
     print(f"{len(all_cold_start_data)} items")
 
 
@@ -77,7 +78,7 @@ def load_dataset():
     image_file_item_dict = {}
     with open('./data/tokenmask_data_256x2/mask_generation_grefcoco209k_new.json', 'r') as f:
         data_dict_list = json.load(f)
-    
+
     for data_dict in data_dict_list:
         image = data_dict['image']
         if image not in image_file_item_dict:
@@ -93,7 +94,7 @@ def load_dataset():
 
     with open('./cold_start_data/gres/cold_start_source.json', 'w') as f:
         json.dump(cold_start_subset, f, indent=4)
-    
+
     with open('./cold_start_data/gres/rl_source.json', 'w') as f:
         json.dump(rl_subset, f, indent=4)
 
@@ -101,7 +102,7 @@ def load_zero_targets():
     image_file_item_dict = {}
     with open('./data/tokenmask_data_256x2/mask_generation_grefcoco209k_new.json', 'r') as f:
         data_dict_list = json.load(f)
-    
+
     for data_dict in data_dict_list:
         image = data_dict['image']
         if image not in image_file_item_dict:
@@ -116,11 +117,11 @@ def load_zero_targets():
             from_gpt = item['conversations'][1]['value']
             if '<|mt_start|>' not in from_gpt:
                 all_zero_target_items.append(item)
-    
+
     with open("./cold_start_data/gres_no_target_source.json", 'w') as f:
         json.dump(all_zero_target_items, f, indent=4)
 
-    print(f"{len(all_zero_target_items)} items!")    
+    print(f"{len(all_zero_target_items)} items!")
 
 def main():
     client = OpenAI(
@@ -145,7 +146,7 @@ def main():
     #     data_dict_list = json.load(f)
     with open('./cold_start_data/gres_no_target_source.json', 'r') as f:
         data_dict_list = json.load(f)
-    
+
     indices = list(range(0, len(data_dict_list)))
     for idx in tqdm.tqdm(indices):
         if os.path.exists(f'./cold_start_data/gres_no_targets/{idx}.json'):

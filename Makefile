@@ -8,11 +8,12 @@ FORMAT_PATHS := tests \
 	projects/rl/datasets/check_rl_parquet.py \
 	verl/trainer/resolve_config.py generalized/verl/trainer/resolve_config.py
 
-# The forked runtimes and the evaluation scripts are linted but keep their
-# existing formatting, so that diffs against upstream EasyR1/veRL stay readable.
-# projects/ is the research tree this release was carved out of; it is not
-# linted beyond the files listed above.
-LINT_PATHS := $(FORMAT_PATHS) verl generalized/verl generalized/tests evaluation
+# The forked runtimes, the evaluation scripts, and the dataset/model code the
+# documented commands reach are linted but keep their existing formatting, so
+# that diffs against upstream EasyR1/veRL stay readable. projects/vlm is the
+# research tree this release was carved out of and is not linted.
+LINT_PATHS := $(FORMAT_PATHS) verl generalized/verl generalized/tests evaluation \
+	projects/rl projects/transformers
 
 # CPU-only suites: spatial + video runtimes and the evaluation helpers.
 TEST_PATHS := tests generalized/tests evaluation

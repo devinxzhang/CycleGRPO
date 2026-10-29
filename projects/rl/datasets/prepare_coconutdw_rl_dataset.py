@@ -1,35 +1,15 @@
-import os
-import sys
-import collections
-import os.path as osp
-import random
 import copy
-from typing import Dict, List
-from PIL import Image
-import numpy as np
-import torch
-import torchvision
-from pycocotools import mask as mask_utils
 import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
+import os
+import random
 import re
 
+import numpy as np
+import tqdm
 from datasets import Dataset, DatasetDict, Sequence
 from datasets import Image as ImageData
-
-import mmengine
-from mmengine.dataset import BaseDataset
-
-from xtuner.model.utils import guess_load_checkpoint
-
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from projects.vlm.vq_sam2.models import DirectResize
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.coconut_meta import COCO_META
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.gcg_process import glamm_granf_map_fn
+from PIL import Image
+from pycocotools import mask as mask_utils
 
 
 def decode_mask(object_masks, ori_height, ori_width):
@@ -92,14 +72,14 @@ def main():
         '<image>\nCould you give me a detail explanation of this picture? Please respond with interleaved segmentation masks for the corresponding phrases.',
         '<image>\nCould you provide me with a detail analysis of this photo? Please output with interleaved segmentation masks for the corresponding parts of the answer.',
     ]
-    
+
     coconutdw_ann_file = "./cold_start_data/detail_gcg_rl_source.json"
 
     with open(coconutdw_ann_file, 'r') as f:
         json_data = json.load(f)
 
     shard_items = []
-    
+
     for index in tqdm.tqdm(list(range(len(json_data)))):
         data_dict = copy.deepcopy(json_data[index])
 
@@ -127,9 +107,9 @@ def main():
             'segmentations': segms,
             'source': 'dw_gcg',
         }
-        
+
         shard_items.append(ret_data_dict)
-    
+
     trainset = Dataset.from_generator(generate_data, gen_kwargs={"conversation_items": shard_items})
     dataset = DatasetDict({"train": trainset}).cast_column("images", Sequence(ImageData()))
     # dataset.push_to_hub("zhouyik/grandf1k")
@@ -138,4 +118,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    

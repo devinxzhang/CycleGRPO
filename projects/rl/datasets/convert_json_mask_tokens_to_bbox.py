@@ -19,13 +19,13 @@ import os
 import re
 from typing import List
 
-from tqdm import tqdm
-from PIL import Image
 import numpy as np
 import torch
 import torchvision
+from PIL import Image
+from tqdm import tqdm
 
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
 
 class DirectResize:

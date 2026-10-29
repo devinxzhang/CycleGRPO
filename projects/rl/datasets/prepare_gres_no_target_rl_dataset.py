@@ -1,13 +1,10 @@
+import argparse
+import json
 import os
 import re
-import json
-import argparse
-from typing import List
-from PIL import Image
-import tqdm
 
-from datasets import Dataset, Sequence
-from datasets import Image as ImageData
+import tqdm
+from datasets import Dataset
 
 
 def extract_mt_token_ids(text):
@@ -26,9 +23,9 @@ def extract_answer_content(text):
 
 
 COLOR_LIST = [
-    "red", "orange", "yellow", "green", "blue", "purple", "black", "white", 
-    "gray", "brown", "pink", "cyan", "magenta", "navy", "maroon", "teal", 
-    "olive", "lime", "aqua", "silver", "gold", "beige", "cream", "indigo", 
+    "red", "orange", "yellow", "green", "blue", "purple", "black", "white",
+    "gray", "brown", "pink", "cyan", "magenta", "navy", "maroon", "teal",
+    "olive", "lime", "aqua", "silver", "gold", "beige", "cream", "indigo",
     "violet", "crimson", "scarlet", "turquoise", "lavender", "plum",
     "light blue", "dark green", "sky blue"
 ]
@@ -98,7 +95,7 @@ def main():
     print(f"Total samples in JSON: {len(json_data)}")
 
     processed_items = []
-    
+
     for index in tqdm.tqdm(range(len(json_data)), desc="Processing samples"):
         data_dict = json_data[index]
 
@@ -118,7 +115,7 @@ def main():
         cot_instruction = " A conversation between User and Assistant."
         if cot_instruction in cap_problem:
             cap_problem = cap_problem.split(cot_instruction)[0].strip()
-        
+
         # Ensure <image> placeholder is present
         if "<image>" not in cap_problem:
             cap_problem = "<image>\n" + cap_problem
@@ -149,15 +146,15 @@ def main():
         processed_items.append(ret_data_dict)
 
     print(f"Processed {len(processed_items)} items!")
-    
+
     # Create dataset
     # trainset = Dataset.from_generator(
-    #     generate_rl_data, 
+    #     generate_rl_data,
     #     gen_kwargs={"items": processed_items}
     # )
     trainset = Dataset.from_list(processed_items)
     # trainset = trainset.cast_column("images", Sequence(ImageData()))
-    
+
     # Save to parquet
     output_filename = f"gres_no_target_{len(processed_items)}_samples_train.parquet"
     output_path = args.output_path or os.path.join(args.output_dir, output_filename)

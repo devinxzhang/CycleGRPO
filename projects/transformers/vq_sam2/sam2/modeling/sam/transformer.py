@@ -11,12 +11,11 @@ from typing import Tuple, Type
 
 import torch
 import torch.nn.functional as F
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from ..position_encoding import apply_rotary_enc, compute_axial_cis
-
 from ..sam2_utils import MLP
-from ...utils.misc import get_sdpa_settings
+
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 # OLD_GPU, USE_FLASH_ATTN, MATH_KERNEL_ON = get_sdpa_settings()

@@ -19,18 +19,18 @@ from typing import Any, Iterable
 
 import pandas as pd
 
-from projects.rl.datasets.prepare_open_o3_spatiotemporal_cyclegrpo import (
-    DEFAULT_DATA_ROOT,
-    TARGET_TASK,
-    _split_name,
-    resolve_video_path,
-)
 from generalized.verl.utils.spatiotemporal import (
     TRAJECTORY_SPATIOTEMPORAL_SOURCE,
     SpatioTemporalClaim,
     bbox_iou,
     parse_spatiotemporal_claims,
     serialize_spatiotemporal_claims,
+)
+from projects.rl.datasets.prepare_open_o3_spatiotemporal_cyclegrpo import (
+    DEFAULT_DATA_ROOT,
+    TARGET_TASK,
+    _split_name,
+    resolve_video_path,
 )
 
 

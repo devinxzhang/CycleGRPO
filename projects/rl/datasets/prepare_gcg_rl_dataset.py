@@ -1,13 +1,11 @@
-import os
+import argparse
 import json
-import tqdm
+import os
 import random
 import re
-import argparse
 
-from datasets import Dataset, Sequence
-from datasets import Image as ImageData
-
+import tqdm
+from datasets import Dataset
 
 
 def extract_answer_content(text):
@@ -23,13 +21,13 @@ def extract_answer_content(text):
     match = re.search(answer_pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
-    
+
     # Try <think>...</think> format - extract content after </think>
     think_pattern = r"</think>\s*\n*(.+)"
     match = re.search(think_pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
-    
+
     # Fallback: return original text
     return text.strip() if text else None
 
@@ -89,17 +87,16 @@ def main():
     print(f"Total samples in JSON: {len(json_data)}")
 
     processed_items = []
-    
+
     for index in tqdm.tqdm(range(len(json_data)), desc="Processing samples"):
         data_dict = json_data[index]
 
         image_path = data_dict['image']
-        from_human = data_dict['conversations'][0]['value']
         from_gpt = data_dict['conversations'][1]['value']
 
         # Build cap_problem: randomly sample from GCG_QUESTIONS
         cap_problem = random.choice(GCG_QUESTIONS)
-        
+
         # Ensure <image> placeholder is present
         if "<image>" not in cap_problem:
             cap_problem = "<image>\n" + cap_problem
@@ -130,15 +127,15 @@ def main():
         processed_items.append(ret_data_dict)
 
     print(f"Processed {len(processed_items)} items!")
-    
+
     # Create dataset
     # trainset = Dataset.from_generator(
-    #     generate_rl_data, 
+    #     generate_rl_data,
     #     gen_kwargs={"items": processed_items}
     # )
     trainset = Dataset.from_list(processed_items)
     # trainset = trainset.cast_column("images", Sequence(ImageData()))
-    
+
     # Save to parquet
     output_filename = f"{args.source_name}_grandf1k_{len(processed_items)}_samples_train.parquet"
     output_path = os.path.join(args.output_dir, output_filename)

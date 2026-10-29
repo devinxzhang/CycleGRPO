@@ -1,32 +1,28 @@
 import os
-import torch
-import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-import torch.nn.functional as F
-import torch.distributed as dist
-
-from typing import Any, Callable, Optional, Union, Iterable
 from dataclasses import dataclass
-import numpy as np
+from typing import Iterable, Optional
 
+import numpy as np
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+import torch.nn.functional as F
 from transformers import PreTrainedModel
-from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask
-from transformers.utils import can_return_tuple, ModelOutput
-from transformers.activations import ACT2FN
+from transformers.utils import ModelOutput, can_return_tuple
 
 from .configuration_vq_sam2 import VQ_SAM2Config
+from .losses import CrossEntropyLoss, DiceLoss, get_uncertain_point_coords_with_randomness, point_sample
 from .modeling_sam2 import SAM2Model
-from .losses import CrossEntropyLoss, DiceLoss, point_sample, get_uncertain_point_coords_with_randomness
 
-        
+
 class VQEmebedding(nn.Embedding):
     """VQ embedding module with ema update."""
 
     def __init__(
-        self, 
-        codebook_size: int, 
-        embedding_dim: int, 
-        ema: bool=True, 
+        self,
+        codebook_size: int,
+        embedding_dim: int,
+        ema: bool=True,
         decay: float=0.99,
         restart_unused_codes: bool=True,
         eps: float=1e-5,
@@ -45,7 +41,7 @@ class VQEmebedding(nn.Embedding):
             # padding index is not updated by EMA
             self.register_buffer('cluster_size_ema', torch.zeros(codebook_size))
             self.register_buffer('embed_ema', self.weight[:-1, :].detach().clone())
-    
+
     @torch.no_grad()
     def compute_distances(self, inputs):
         codebook_t = self.weight[:-1, :].t().contiguous()
@@ -81,11 +77,11 @@ class VQEmebedding(nn.Embedding):
         std = x.new_ones(embed_dim) * 0.01 / np.sqrt(embed_dim)
         x = x.repeat(n_repeats, 1)
         x = x + torch.rand_like(x) * std
-        return x    
-    
+        return x
+
     @torch.no_grad()
     def _update_buffers(self, vectors, idxs):
-        
+
         n_embed, embed_dim = self.weight.shape[0]-1, self.weight.shape[-1]
 
         vectors = vectors.reshape(-1, embed_dim).contiguous()
@@ -99,7 +95,7 @@ class VQEmebedding(nn.Embedding):
                               index=idxs.unsqueeze(0),
                               src=vectors.new_ones(1, n_vectors)
                               )
-        
+
         cluster_size = one_hot_idxs.sum(dim=1)
         vectors_sum_per_cluster = one_hot_idxs @ vectors
 
@@ -107,7 +103,7 @@ class VQEmebedding(nn.Embedding):
         if dist.is_initialized():
             dist.all_reduce(vectors_sum_per_cluster, op=dist.ReduceOp.SUM)
             dist.all_reduce(cluster_size, op=dist.ReduceOp.SUM)
-        
+
         self.cluster_size_ema.mul_(self.decay).add_(cluster_size, alpha=1 - self.decay)
         self.embed_ema.mul_(self.decay).add_(vectors_sum_per_cluster, alpha=1 - self.decay)
 
@@ -116,16 +112,16 @@ class VQEmebedding(nn.Embedding):
                 vectors = self._tile_with_noise(vectors, n_embed)
             n_vectors = vectors.shape[0]
             _vectors_random = vectors[torch.randperm(n_vectors, device=vectors.device)][:n_embed]
-            
+
             assert dist.is_initialized()
             if dist.is_initialized():
                 dist.broadcast(_vectors_random, 0)
-            
+
             usage = (self.cluster_size_ema.view(-1, 1) >= 1).float()
             self.embed_ema.mul_(usage).add_(_vectors_random * (1-usage))
             self.cluster_size_ema.mul_(usage.view(-1))
             self.cluster_size_ema.add_(torch.ones_like(self.cluster_size_ema) * (1-usage).view(-1))
-    
+
     @torch.no_grad()
     def _update_embedding(self):
 
@@ -140,7 +136,7 @@ class VQEmebedding(nn.Embedding):
         embed_idxs = self.find_nearest_embedding(inputs)
         if self.training and self.ema and not freeze_codebook:
             self._update_buffers(inputs, embed_idxs)
-        
+
         embeds = self.embed(embed_idxs)
 
         if self.ema and self.training and not freeze_codebook:
@@ -148,9 +144,9 @@ class VQEmebedding(nn.Embedding):
             # exit(0)
             self._update_embedding()
         # print("================>self.ema and self.training and not freeze_codebook: ", self.ema and self.training and not freeze_codebook)
-        
+
         return embeds, embed_idxs
-            
+
     def embed(self, idxs):
         embeds = super().forward(idxs)
         return embeds
@@ -172,14 +168,14 @@ class ResidualQuantizer(nn.Module):
         if self.shared_codebook:
             if isinstance(codebook_size, Iterable) or isinstance(decay, Iterable):
                 raise ValueError("Shared codebooks are incompatible with list types of momentums or sizes: Change it into int")
-        
+
         self.restart_unused_codes = restart_unused_codes
         self.codebook_size = codebook_size if isinstance(codebook_size, Iterable) else [codebook_size for _ in range(codebook_depth)]
         self.decay = decay if isinstance(decay, Iterable) else [decay for _ in range(codebook_depth)]
         self.codebook_depth = codebook_depth
 
         if self.shared_codebook:
-            codebook0 = VQEmebedding(codebook_size=self.codebook_size[0], 
+            codebook0 = VQEmebedding(codebook_size=self.codebook_size[0],
                 embedding_dim=latent_dim, decay=self.decay[0], restart_unused_codes=restart_unused_codes,)
             self.codebooks = nn.ModuleList([codebook0 for _ in range(codebook_depth)])
         else:
@@ -189,7 +185,7 @@ class ResidualQuantizer(nn.Module):
                                       restart_unused_codes=restart_unused_codes,)
                                       for idx in range(codebook_depth)]
             self.codebooks = nn.ModuleList(codebooks)
-        
+
         self.commitment_loss = commitment_loss
 
     def quantize(self, x, freeze_codebook=False):
@@ -208,10 +204,10 @@ class ResidualQuantizer(nn.Module):
 
             quant_list.append(aggregated_quants.clone())
             code_list.append(code.unsqueeze(-1))
-        
+
         codes = torch.cat(code_list, dim=-1)
         return quant_list, codes
-    
+
     def compute_commitment_loss(self, x, quant_list):
         r"""
         Compute the commitment loss for the residual quantization.
@@ -222,10 +218,10 @@ class ResidualQuantizer(nn.Module):
         for idx, quant in enumerate(quant_list):
             partial_loss = (x - quant.detach()).pow(2.0).mean()
             loss_list.append(partial_loss)
-        
+
         commitment_loss = torch.mean(torch.stack(loss_list))
         return commitment_loss
-    
+
     @torch.no_grad()
     def embed_code(self, code):
         # N, 4
@@ -238,17 +234,17 @@ class ResidualQuantizer(nn.Module):
             embeds = [self.codebooks[0].embed(code_slice) for i, code_slice in enumerate(code_slices)]
         else:
             embeds = [self.codebooks[i].embed(code_slice) for i, code_slice in enumerate(code_slices)]
-        
+
         embeds = torch.cat(embeds, dim=-2)
         sum_embeds = []
         for _embeds_, _code_ in zip(embeds, code):
             valid_mask = _code_ != -1
             sum_embeds.append(_embeds_[valid_mask].sum(0))
-        
+
         return torch.stack(sum_embeds, dim=0)
 
         # embeds = torch.cat(embeds, dim=-2).sum(-2)
-        
+
         # return embeds
 
     def forward(self, x, freeze_codebook=False):
@@ -259,7 +255,7 @@ class ResidualQuantizer(nn.Module):
         quants_trunc = x + (quants_trunc - x).detach()
 
         return quants_trunc, commitment_loss, codes
-    
+
 
 @dataclass
 class VQ_SAM2ModelOutput(ModelOutput):
@@ -276,7 +272,7 @@ class VQ_SAM2ModelOutput(ModelOutput):
     quant_codes: Optional[torch.LongTensor] = None
 
 
-    
+
 class VQ_SAM2(PreTrainedModel):
     base_model_prefix = ""
     config_class = VQ_SAM2Config
@@ -315,7 +311,7 @@ class VQ_SAM2(PreTrainedModel):
 
         self.loss_mask = CrossEntropyLoss(use_sigmoid=True, reduction='mean', loss_weight=2.0)
         self.loss_dice = DiceLoss(use_sigmoid=True, activate=True, reduction='mean', naive_dice=True, eps=1.0, loss_weight=0.5)
-        
+
     def sample_points(self, mask_pred, gt_masks):
         gt_masks = gt_masks.unsqueeze(1)
         gt_masks = gt_masks.to(mask_pred)
@@ -333,7 +329,7 @@ class VQ_SAM2(PreTrainedModel):
         mask_point_preds = point_sample(
             mask_pred.to(torch.float32), points_coords.to(torch.float32)).squeeze(1)
         return mask_point_preds.to(mask_pred.dtype), mask_point_targets.to(mask_pred.dtype)
-    
+
     def forward_with_codes(self, pixel_values, quant_codes):
         batch_size = len(quant_codes)
         pixel_values = torch.stack([
@@ -349,7 +345,7 @@ class VQ_SAM2(PreTrainedModel):
         pred_masks = self.model.inject_language_embd(sam2_states, quant_mask_embeds, nf_nobj=(batch_size, 1))
 
         return pred_masks
-    
+
     def forward_with_embeds(self, pixel_values, embeds):
         batch_size = len(embeds)
         pixel_values = torch.stack([
@@ -419,7 +415,7 @@ class VQ_SAM2(PreTrainedModel):
                 loss_mask = self.loss_mask(pred_masks, gt_masks)
                 loss_dice = self.loss_dice(pred_masks, gt_masks)
             loss += loss_mask + loss_dice
-            
+
             return VQ_SAM2ModelOutput(
                 loss=loss,
                 loss_recon=loss_mask+loss_dice,
@@ -488,7 +484,7 @@ class VQ_SAM2(PreTrainedModel):
     #             loss_mask = self.loss_mask(pred_masks, gt_masks)
     #             loss_dice = self.loss_dice(pred_masks, gt_masks)
     #         loss += loss_mask + loss_dice
-            
+
     #         return VQ_SAM2ModelOutput(
     #             loss=loss,
     #             loss_recon=loss_mask+loss_dice,

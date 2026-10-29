@@ -10,7 +10,6 @@ import torch
 from torch import nn
 
 from ..position_encoding import PositionEmbeddingRandom
-
 from ..sam2_utils import LayerNorm2d
 
 

@@ -24,39 +24,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+import warnings
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.generation import GenerationMixin
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
-from transformers.modeling_flash_attention_utils import FlashAttentionKwargs, is_flash_attn_available
-from transformers.modeling_layers import GradientCheckpointingLayer
-from transformers.modeling_outputs import BaseModelOutputWithPast, ModelOutput
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
-from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
-from transformers.processing_utils import Unpack
-from transformers.utils import TransformersKwargs, auto_docstring, can_return_tuple, is_torchdynamo_compiling, logging, TransformersKwargs
-from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import Qwen2_5_VLTextConfig, Qwen2_5_VLVisionConfig
+from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
+from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
-    Qwen2_5_VLModelOutputWithPast,
-    Qwen2_5_VLCausalLMOutputWithPast,
-    Qwen2_5_VLPreTrainedModel,
-    Qwen2_5_VLDecoderLayer,
-    Qwen2RMSNorm,
-    Qwen2_5_VLRotaryEmbedding,
     Qwen2_5_VisionTransformerPretrainedModel,
-
+    Qwen2_5_VLCausalLMOutputWithPast,
+    Qwen2_5_VLDecoderLayer,
+    Qwen2_5_VLModelOutputWithPast,
+    Qwen2_5_VLPreTrainedModel,
+    Qwen2_5_VLRotaryEmbedding,
+    Qwen2RMSNorm,
 )
-from .configuration_qwen2_5_vl_vq_sam2 import Qwen2_5_VL_VQ_SAM2Config
+from transformers.processing_utils import Unpack
+from transformers.utils import TransformersKwargs, auto_docstring, can_return_tuple, is_torchdynamo_compiling, logging
 
-import warnings 
+from .configuration_qwen2_5_vl_vq_sam2 import Qwen2_5_VL_VQ_SAM2Config
 
 
 # if is_flash_attn_available():
@@ -164,8 +154,8 @@ class Qwen2_5_VLTextModel_with_Spatial_Tokens(Qwen2_5_VLPreTrainedModel):
                 causal_mask_mapping = {
                     "full_attention": create_causal_mask(**mask_kwargs),
                 }
-            except Exception as e:
-                warnings.warn(f"Error creating causal mask for full_attention")
+            except Exception:
+                warnings.warn("Error creating causal mask for full_attention")
                 causal_mask_mapping = {
                     "full_attention": attention_mask,
                 }
@@ -667,7 +657,7 @@ class Qwen2_5_VLForMaskGeneration(Qwen2_5_VLPreTrainedModel, GenerationMixin):
     @property
     def visual(self):
         return self.model.visual
-    
+
     @can_return_tuple
     @auto_docstring
     def forward(
@@ -965,7 +955,7 @@ class Qwen2_5_VLForMaskGeneration(Qwen2_5_VLPreTrainedModel, GenerationMixin):
 
         return input_ids, model_kwargs
 
-        
 
 
-__all__ = ["Qwen2_5_VLForMaskGeneration", "Qwen2_5_VLTextModel_with_Spatial_Tokens", "Qwen2_5_VLModel_with_Spatial_Tokens"]
+
+__all__ = ["Qwen2_5_VLForMaskGeneration", "Qwen2_5_VLModel_with_Spatial_Tokens", "Qwen2_5_VLTextModel_with_Spatial_Tokens"]

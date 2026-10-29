@@ -1,41 +1,21 @@
 import argparse
 import os
-import sys
-import collections
-import os.path as osp
 import random
-import copy
-from typing import Dict, List
-from PIL import Image
+
+import hydra
 import numpy as np
+import pycocotools.mask as mask_util
 import torch
 import torchvision
-from pycocotools import mask as mask_utils
-import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
-import re
-import uuid
-import hydra
-import base64
-from tqdm import tqdm
-from PIL import Image, ImageDraw, ImageColor
-from datasets import Dataset, DatasetDict, Sequence
+from datasets import Dataset, DatasetDict, Sequence, load_dataset
 from datasets import Image as ImageData
-from datasets import load_dataset
+from PIL import Image, ImageColor, ImageDraw
+from pycocotools import mask as mask_utils
+from torchvision.transforms.functional import to_pil_image
+from tqdm import tqdm
+from transformers import Sam2Model, Sam2Processor
 
-import mmengine
-from mmengine.dataset import BaseDataset
-import pycocotools.mask as mask_util
-from xtuner.model.utils import guess_load_checkpoint
-
-from transformers import Sam2Processor, Sam2Model
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from torchvision.transforms.functional import resize, to_pil_image
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
 
 class DirectResize:
@@ -129,22 +109,22 @@ def concat_side_by_side(img_left, img_right):
     """
     w1, h1 = img_left.size
     w2, h2 = img_right.size
-    
+
     # 1. 创建新画布：宽度相加，高度取最大值
     new_w = w1 + w2
     new_h = max(h1, h2)
     # 创建RGB模式的空白图
-    new_img = Image.new('RGB', (new_w, new_h), color=(255, 255, 255)) 
-    
+    new_img = Image.new('RGB', (new_w, new_h), color=(255, 255, 255))
+
     # 2. 粘贴图片
     new_img.paste(img_left, (0, 0))      # 第一张贴在左边 (0,0)
     new_img.paste(img_right, (w1, 0))    # 第二张贴在右边 (w1, 0)
-    
+
     return new_img
 
 def parse_args():
     parser = argparse.ArgumentParser(description='RefCocoSeg')
-    parser.add_argument('--model_path', 
+    parser.add_argument('--model_path',
         default="Qwen/Qwen3-VL-4B-SAMTok",
         help='hf model path.')
     parser.add_argument(
@@ -178,7 +158,7 @@ def main():
             cfg_path="sam2.1_hiera_l.yaml",
             ckpt_path="Qwen/sam2.1_hiera_large.pt",
         )
-        
+
         vq_sam2_config = VQ_SAM2Config(
             sam2_config=sam2_config,
             codebook_size=CODEBOOK_SIZE,
@@ -206,8 +186,6 @@ def main():
         if bbox is not None:
             category = sample["subtask_l1"]  # Discriminative/Spatial/Limited/Rejection
             assert category in ["Discriminative", "Spatial", "Limited"]
-            width = sample["width"]
-            height = sample["height"]
 
             item = {}
 
@@ -261,14 +239,14 @@ def main():
             boxes = boxes / whwh
             boxes = boxes.to(vq_sam2.device)
             masks = [m.unsqueeze(0).to(vq_sam2.device) for m in masks]
-            
+
             with torch.no_grad():
                 vq_sam2_output = vq_sam2(
                     sam2_pixel_values,
                     masks,
                     boxes,
                     reconstruct_mask=False,
-                )            
+                )
 
             quant_codes = vq_sam2_output.quant_codes.squeeze().cpu().numpy().astype(np.int32).tolist()
             remap_quant_codes = [depth_idx*CODEBOOK_SIZE+quant_code for depth_idx, quant_code in enumerate(quant_codes)]
@@ -292,7 +270,7 @@ def main():
                 cropped_image = image.crop((x1, y1, x2, y2))
                 crop_width, crop_height = cropped_image.size
 
-                
+
                 if crop_width > crop_height and crop_width < 280:
                     ratio = 280 / crop_height
                     new_height = 280
@@ -345,7 +323,7 @@ def main():
                         cropped_boxes,
                         reconstruct_mask=True,
                     )
-                
+
                 crop_quant_codes = cropped_vq_sam2_output.quant_codes.squeeze().detach().cpu().numpy().astype(np.int32).tolist()
                 remap_crop_quant_codes = [depth_idx*CODEBOOK_SIZE+quant_code for depth_idx, quant_code in enumerate(crop_quant_codes)]
                 crop_quant_codes = remap_crop_quant_codes
@@ -359,11 +337,11 @@ def main():
             else:
                 item['images'] = image
                 item['cap_problem'] = '<image>\nProvide a detailed description of this region {Global_SEG}.'.format(Global_SEG=global_mask_tokens_str)
-            
+
             item['cap_answer'] = '<think>\n\n</think><answer>{CAPTION}</answer>'.format(CAPTION=description)
             item['seg_problem'] = PROMPT_TEMPLATE.format(description=description)
             item['seg_answer'] = '<think>\n\n</think><answer>{SEGMENTATION}</answer>'.format(SEGMENTATION=global_mask_tokens_str)
-            
+
             fortran_mask = np.asfortranarray(final_mask)
             rle_dict = mask_util.encode(fortran_mask)
             rle_string = rle_dict['counts'].decode('utf-8')
@@ -375,7 +353,7 @@ def main():
 
     trainset = Dataset.from_list(data_list)
     trainset = DatasetDict({"train": trainset}).cast_column("images", Sequence(ImageData()))
-    trainset["train"].to_parquet(f"rl_dataset/groundingme_train.parquet")
+    trainset["train"].to_parquet("rl_dataset/groundingme_train.parquet")
 
             ## For Visualization
             # result_image = apply_overlay_and_box(image, final_mask, bbox, color_hex="#33FF33", alpha=160)
@@ -389,4 +367,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    

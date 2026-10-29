@@ -8,7 +8,6 @@ import math
 from typing import Any, Optional, Tuple
 
 import numpy as np
-
 import torch
 from torch import nn
 

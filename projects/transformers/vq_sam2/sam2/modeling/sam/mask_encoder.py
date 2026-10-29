@@ -4,12 +4,10 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import List, Optional, Tuple, Type
+from typing import Tuple
 
 import torch
 from torch import nn
-
-from ..sam2_utils import LayerNorm2d, MLP
 
 
 class MaskEncoder(nn.Module):

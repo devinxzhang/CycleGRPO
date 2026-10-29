@@ -1,42 +1,30 @@
+import base64
+import copy
+import io
+import json
 import os
 import sys
-import collections
-import os.path as osp
-import random
-import copy
-from typing import Dict, List
-from PIL import Image
+import uuid
+from io import BytesIO
+from types import MethodType
+
+import matplotlib.colors as mplc
 import numpy as np
 import torch
 import torchvision
-from pycocotools import mask as mask_utils
-import json
 import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import uuid
-from datasets import load_from_disk, concatenate_datasets
-import base64
-import io
-from io import BytesIO
-from datasets import Dataset, Features, Sequence, Value
-import datasets
-
+from datasets import load_from_disk
+from detectron2.data import MetadataCatalog
+from detectron2.data.detection_utils import _apply_exif_orientation, convert_PIL_to_numpy
+from detectron2.utils.visualizer import ColorMode, GenericMask, Visualizer
+from PIL import Image
+from pycocotools import mask as mask_utils
 from xtuner.model.utils import guess_load_checkpoint
 
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 from projects.vlm.vq_sam2.models import DirectResize
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.coconut_meta import COCO_META
 
 
-from types import MethodType
-from detectron2.data import MetadataCatalog
-from detectron2.utils.visualizer import ColorMode, Visualizer
-
-from detectron2.data.detection_utils import read_image, _apply_exif_orientation, convert_PIL_to_numpy
-from detectron2.utils.visualizer import GenericMask
-import matplotlib.colors as mplc
 def draw_instance_predictions_cache(self, labels, np_masks, jittering: bool = True):
     """
     Draw instance-level prediction results on an image.
@@ -50,7 +38,6 @@ def draw_instance_predictions_cache(self, labels, np_masks, jittering: bool = Tr
         output (VisImage): image object with visualizations.
     """
     boxes = None
-    scores = None
     classes = None
     keypoints = None
 
@@ -70,7 +57,7 @@ def draw_instance_predictions_cache(self, labels, np_masks, jittering: bool = Tr
     else:
         colors = None
         alpha = 0.5
-    
+
     alpha = 0.4
 
     self.overlay_instances(
@@ -184,7 +171,7 @@ def generate_unique_image_filename(directory="./data/gar_sam_zoom_in_images", pr
         # 3. 可以选择截断，但为了更高的唯一性，建议使用更长的部分或整个 UUID
         random_uuid_str = uuid.uuid4().hex # .hex 属性直接返回不带连字符的字符串
         # 如果确实需要更短的，可以截断，但请注意唯一性风险
-        # random_uuid_str = uuid.uuid4().hex[:8] 
+        # random_uuid_str = uuid.uuid4().hex[:8]
         image_file_name = f'{prefix}_{random_uuid_str}{suffix}'
         image_file_path = os.path.join(directory, image_file_name)
         if not os.path.exists(image_file_path):
@@ -227,7 +214,7 @@ def main(task_id):
         if key.startswith('hf_model.'):
             new_key = new_key[len('hf_model.'):]
         pretrained_state_dict_new[new_key] = pretrained_state_dict[key]
-    
+
     vq_sam2.load_state_dict(pretrained_state_dict_new)
 
     sam2_image_processor = DirectResize(1024)
@@ -269,7 +256,7 @@ def main(task_id):
 
         image_file = generate_unique_image_filename(prefix='gar')
         image.save(image_file)
-        
+
         sam2_image = np.array(image)
         sam2_image = sam2_image_processor.apply_image(sam2_image)
         sam2_pixel_values = torch.from_numpy(sam2_image).permute(2, 0, 1).contiguous()
@@ -285,7 +272,7 @@ def main(task_id):
         boxes = boxes / whwh
         boxes = boxes.to(vq_sam2.device)
         masks = [m.unsqueeze(0).to(vq_sam2.device) for m in masks]
-        
+
         with torch.no_grad():
             vq_sam2_output = vq_sam2(
                 sam2_pixel_values.repeat(len(masks), 1, 1, 1),
@@ -333,7 +320,7 @@ def main(task_id):
                 x2 = int(min(ori_width, x2))
                 y1 = int(max(0, y1))
                 y2 = int(min(ori_height, y2))
-            
+
                 cropped_image = image.crop((x1, y1, x2, y2))
                 crop_width, crop_height = cropped_image.size
 
@@ -378,7 +365,7 @@ def main(task_id):
                 crop_height, crop_width = cropped_masks.shape[-2:]
                 try:
                     cropped_boxes = torchvision.ops.masks_to_boxes(cropped_masks)
-                except:
+                except (IndexError, RuntimeError, ValueError):
                     print(binary_masks[box_id].sum())
                     print(resized_crop_image is None)
                     exit(0)
@@ -394,7 +381,7 @@ def main(task_id):
                         cropped_boxes,
                         reconstruct_mask=True,
                     )
-                
+
                 crop_quant_codes = cropped_vq_sam2_output.quant_codes.squeeze().detach().cpu().numpy().astype(np.int32).tolist()
                 remap_crop_quant_codes = [depth_idx*CODEBOOK_SIZE+quant_code for depth_idx, quant_code in enumerate(crop_quant_codes)]
                 crop_quant_codes = remap_crop_quant_codes
@@ -409,7 +396,7 @@ def main(task_id):
                     cropped_image_file = generate_unique_image_filename(prefix='gar', suffix='_local.jpg')
                     cropped_image.save(cropped_image_file)
                 image_files.append(cropped_image_file)
-                
+
             for k, v in global_mask_token_str_dict.items():
                 from_human = from_human.replace(k, k+v)
             zoom_in_str = ''
@@ -474,7 +461,7 @@ def main(task_id):
                     shard_items.clear()
                     print(f"[SAVE] {out_path} ({count} items)", flush=True)
                 continue
-            
+
             # zoom in mask and image
             bbox_w = x2 - x1
             bbox_h = y2 - y1
@@ -488,7 +475,7 @@ def main(task_id):
             x2 = int(min(ori_width, x2))
             y1 = int(max(0, y1))
             y2 = int(min(ori_height, y2))
-        
+
             cropped_image = image.crop((x1, y1, x2, y2))
             crop_width, crop_height = cropped_image.size
 
@@ -544,14 +531,14 @@ def main(task_id):
                     cropped_boxes,
                     reconstruct_mask=True,
                 )
-            
+
             crop_quant_codes = cropped_vq_sam2_output.quant_codes.squeeze().detach().cpu().numpy().astype(np.int32).tolist()
             remap_crop_quant_codes = [depth_idx*CODEBOOK_SIZE+quant_code for depth_idx, quant_code in enumerate(crop_quant_codes)]
             crop_quant_codes = remap_crop_quant_codes
 
             mask_tokens_str = MT_START_TOKEN + ''.join([MT_CONTEXT_TOKEN.format(str(code).zfill(4)) for code in quant_codes]) + MT_END_TOKEN
             crop_mask_tokens_str = MT_START_TOKEN + ''.join([MT_CONTEXT_TOKEN.format(str(code).zfill(4)) for code in crop_quant_codes]) + MT_END_TOKEN
-            
+
             from_human = from_human.replace('<Prompt0>', '<Prompt0>'+mask_tokens_str)
             from_human = from_human + f' Zoom in <Prompt0>: <image>, {crop_mask_tokens_str}.'
             question = "<image>\n" + from_human
@@ -567,7 +554,7 @@ def main(task_id):
             else:
                 cropped_image_file = generate_unique_image_filename(prefix='gar', suffix='_local.jpg')
                 cropped_image.save(cropped_image_file)
-                
+
             ret_data_dict = {
                 'image': [image_file, cropped_image_file],
                 'conversations': conversation,
