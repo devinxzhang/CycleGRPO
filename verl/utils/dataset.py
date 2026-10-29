@@ -142,34 +142,44 @@ def sample_single_target_from_multi_target(
 ) -> Tuple[str, str, Optional[List[str]]]:
     """
     从多目标 region captioning prompt 中随机采样最多 max_targets 个目标。
-    不使用 zoom-in 图片，只保留原图。
-    
+    选中目标的 zoom-in 图片和 zoom-in 子句一并保留，未选中目标的 zoom-in 被丢弃。
+
     Args:
         prompt: 多目标的 prompt 字符串
         ground_truth: 对应的 ground truth 字符串
-        images: 图片路径列表，只保留第一张原图
+        images: 图片路径列表，第一张为原图，其余依次对应 prompt 中的 zoom-in 子句
         max_targets: 最多保留的目标数量，默认为5
         region_format: 区域表示格式，"mask_token" 或 "bbox"
-    
+
     Returns:
-        Tuple[str, str, Optional[List[str]]]: (处理后的 prompt, 处理后的 ground truth, 只包含原图的列表)
-    
-    如果目标数量 <= max_targets，返回原始内容不变。
+        Tuple[str, str, Optional[List[str]]]: (处理后的 prompt, 处理后的 ground truth, 原图 + 选中目标的 zoom-in 图)
+
+    如果目标数量 <= max_targets，保留所有目标。
     如果目标数量 > max_targets，随机选择 max_targets 个目标保留。
     """
     # 根据 region_format 选择不同的正则表达式
+    mask_token_pattern = r"<\|mt_start\|><\|mt_\d{4}\|><\|mt_\d{4}\|><\|mt_end\|>"
+    bbox_pattern = r"\[\d+,\s*\d+,\s*\d+,\s*\d+\]"
     if region_format == "mask_token":
-        region_pattern = r"<\|mt_start\|><\|mt_\d{4}\|><\|mt_\d{4}\|><\|mt_end\|>"
+        region_pattern = mask_token_pattern
     elif region_format == "bbox":
-        region_pattern = r"\[\d+,\s*\d+,\s*\d+,\s*\d+\]"
+        region_pattern = bbox_pattern
     else:
         raise ValueError(f"Unknown region_format: {region_format}, expected 'mask_token' or 'bbox'")
-    
-    # 只保留原图
+
+    # 只保留原图（选中目标的 zoom-in 图在下面加回）
     new_images = None
     if images is not None and len(images) > 0:
-        new_images = [images[0]]  # 只保留原图
-    
+        new_images = [images[0]]
+
+    # 0. 拆出 zoom-in 子句，第 i 个子句对应 images[i + 1]
+    # 多目标格式: "Zoom in on <target> with the perspective as <image>, <zoom>."
+    # 单目标格式: "Zoom in with the perspective as <image>, <zoom>."
+    any_region = f"(?:{mask_token_pattern}|{bbox_pattern})"
+    zoom_pattern = rf"\s*Zoom in(?: on ({region_pattern}))? with the perspective as <image>, ({any_region})\."
+    zooms = [(m.group(1), m.group(2)) for m in re.finditer(zoom_pattern, prompt)]
+    prompt = re.sub(zoom_pattern, "", prompt)
+
     # 1. 找到主句部分，提取所有 region tokens
     # 支持两种格式：有或没有 "Please respond with interleaved segmentation masks" 后缀
     main_part_match = re.search(
@@ -202,7 +212,7 @@ def sample_single_target_from_multi_target(
         selected_indices = sorted(random.sample(range(len(main_tokens)), max_targets))
         selected_tokens = [main_tokens[i] for i in selected_indices]
     
-    # 2. 构建新的 prompt（不包含 zoom-in 部分）
+    # 2. 构建新的 prompt
     if region_format == "bbox":
         # bbox 格式使用简洁的 prompt
         new_prompt = "<image>\n"
@@ -217,7 +227,20 @@ def sample_single_target_from_multi_target(
         new_prompt = f"<image>\nCould you please give me a detailed description of the following {region_word}? "
         new_prompt += ", ".join(selected_tokens)
         new_prompt += "."
-    
+
+    # 附加选中目标的 zoom-in 子句和图片。zoom-in 子句按目标顺序生成，且同一张图中
+    # 不同目标可能是相同的 token，因此按位置而不是按 token 值把子句对应到目标。
+    target_idx = -1
+    for zoom_idx, (target, zoom_token) in enumerate(zooms):
+        if target is None:
+            target = main_tokens[0] if len(main_tokens) == 1 else None
+        target_idx = next((j for j in range(target_idx + 1, len(main_tokens)) if main_tokens[j] == target), None)
+        if target_idx is None:
+            break
+        if target_idx in selected_indices and new_images is not None and zoom_idx + 1 < len(images):
+            new_prompt += f" Zoom in on {target} with the perspective as <image>, {zoom_token}."
+            new_images.append(images[zoom_idx + 1])
+
     # 3. 处理 ground truth
     new_ground_truth = extract_multiple_ground_truths(ground_truth, selected_tokens, selected_indices, len(main_tokens), region_format)
     
@@ -723,7 +746,7 @@ class RLHFDataset(Dataset):
             )
         
         # example: ['images', 'seg_answer', 'cap_answer', 'seg_problem', 'masks', 'source']
-        # 如果超过5个目标，随机保留5个；否则不变
+        # 每次取样从多目标样本中随机保留 1 个目标（及其 zoom-in 图）
         # print('before: ', example)
         example[self.cap_prompt_key], example[self.seg_answer_key], example[self.image_key] = sample_single_target_from_multi_target(
             prompt=example.get(self.cap_prompt_key, ""),
