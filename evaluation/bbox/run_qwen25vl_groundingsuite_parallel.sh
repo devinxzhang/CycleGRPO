@@ -10,6 +10,7 @@
 #   bash run_qwen25vl_groundingsuite_parallel.sh
 #   NUM_GPUS=4 GPUS=0,1,2,3 bash run_qwen25vl_groundingsuite_parallel.sh
 #   MODEL_PATH=Qwen/Qwen2.5-VL-3B-Instruct bash run_qwen25vl_groundingsuite_parallel.sh
+#   IMAGE_ROOT=/path/to/GroundingSuiteEval bash run_qwen25vl_groundingsuite_parallel.sh
 
 set -euo pipefail
 
@@ -21,11 +22,18 @@ GPUS="${GPUS:-0,1,2,3,4,5,6,7}"
 MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-VL-7B-Instruct}"
 SAVE_DIR="${SAVE_DIR:-./results/groundingsuite_bbox_qwen25vl/}"
 DATASET="${DATASET:-./data/GroundingSuiteEval/GroundingSuite-Eval.jsonl}"
+IMAGE_ROOT="${IMAGE_ROOT:-}"
 LOG_DIR="${LOG_DIR:-./logs/qwen25vl_groundingsuite}"
 # ----------------------------------------------------------------------------
 
 IFS=',' read -ra GPU_ARR <<< "${GPUS}"
 NUM_GPUS="${NUM_GPUS:-${#GPU_ARR[@]}}"
+
+COMMON_ARGS=(--model_path "${MODEL_PATH}" --save_dir "${SAVE_DIR}" --dataset "${DATASET}")
+[[ -n "${IMAGE_ROOT}" ]] && COMMON_ARGS+=(--image_root "${IMAGE_ROOT}")
+
+# Fail on missing inputs before any worker loads a model onto a GPU.
+python "${PY_SCRIPT}" "${COMMON_ARGS[@]}" --check_only || exit 1
 
 mkdir -p "${SAVE_DIR}" "${LOG_DIR}"
 
@@ -51,9 +59,7 @@ for i in "${!GPU_ARR[@]}"; do
     LOG_FILE="${LOG_DIR}/task_${i}_of_${NUM_GPUS}_gpu${GPU_ID}.log"
     echo "  -> task_id=${i}/${NUM_GPUS} on cuda:${GPU_ID} | log=${LOG_FILE}"
     CUDA_VISIBLE_DEVICES="${GPU_ID}" python "${PY_SCRIPT}" \
-        --model_path "${MODEL_PATH}" \
-        --save_dir "${SAVE_DIR}" \
-        --dataset "${DATASET}" \
+        "${COMMON_ARGS[@]}" \
         --task_id "${i}" \
         --num_tasks "${NUM_GPUS}" \
         > "${LOG_FILE}" 2>&1 &
