@@ -338,9 +338,9 @@ class RayWorkerGroup(WorkerGroup):
                 self._worker_names.append(name)
 
                 if rank == 0:
-                    # Rank 0 registers itself once its worker process has imported torch
-                    # and vLLM, which on a cold filesystem can take much longer than the
-                    # default two minutes. VERL_REGISTER_CENTER_TIMEOUT raises the wait.
+                    # Rank 0 registers itself only after its worker process has
+                    # imported torch and vLLM, which can take longer than the default
+                    # two minutes. VERL_REGISTER_CENTER_TIMEOUT raises the wait.
                     timeout = int(os.environ.get("VERL_REGISTER_CENTER_TIMEOUT", "120"))
                     register_center_actor = None
                     for _ in range(timeout):
