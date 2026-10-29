@@ -30,10 +30,10 @@ hf download zhouyik/Qwen3-VL-4B-SAMTok-co \
 ### Released data (recommended)
 
 [XinNUS/CycleGRPO-RL-Data](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data)
-contains the exact parquets and zoom-in crops used to train
-[CycleGRPO-4B](https://huggingface.co/XinNUS/CycleGRPO-4B). V3Det and COCO
-images are not redistributed; download them from the official sources and
-let `prepare_images.py` link the ones that are used:
+holds the 19,655 DenseWorld cycle samples, the 1,000 gRefCOCO no-target
+samples and the zoom-in crops they reference. V3Det and COCO images are not
+redistributed; download them from the official sources and let
+`prepare_images.py` link the ones that are used:
 
 ```bash
 hf download XinNUS/CycleGRPO-RL-Data --repo-type dataset --local-dir data/CycleGRPO-RL-Data
@@ -137,6 +137,10 @@ Both converters write the same columns:
 | `source` | `denseworld_multiple` or `gres_no_target` |
 | `cap_answer`, `seg_problem`, `masks` | unused, `null` |
 
+A row may hold several target regions. The data loader draws one of them at
+random on every pass, together with that target's zoom-in crop, so a row with
+many regions contributes a different single-target sample each epoch.
+
 Validate the schema and the first rows (image paths, `<image>` counts, token
 ranges) without loading the whole file. The launcher runs the same check:
 
@@ -183,49 +187,30 @@ with a `trainer.load_checkpoint_path` that does not exist is an error.
 Memory-related overrides are listed at the bottom of
 `projects/rl/qwen3vl_4b_mt.sh`.
 
-## 5. Reproduce CycleGRPO-4B
+## 5. Train the paper configuration
 
-The released checkpoint came from three consecutive runs on the released data
-(full lineage and settings in the
-[dataset card](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data)). It
-starts from `zhouyik/Qwen3-VL-4B-SAMTok`, not from the co-SFT snapshot of
-section 2. Each stage after the first starts from the previous stage's last
-checkpoint, merged to Hugging Face format:
+One epoch over the released data, starting from `zhouyik/Qwen3-VL-4B-SAMTok`
+rather than from the co-SFT snapshot of section 2, with the caption group size
+and the grounding rollout count both set to 6:
 
 ```bash
 D=data/CycleGRPO-RL-Data
 SAMTOK=checkpoints/Qwen3-VL-4B-SAMTok
 hf download zhouyik/Qwen3-VL-4B-SAMTok --local-dir $SAMTOK
-export IMAGE_DIR=$D MASK_TOKENIZER_PATH=$SAMTOK/mask_tokenizer_256x2.pth SAM2_PATH=$SAMTOK/sam2.1_hiera_large.pt
-CKPT=checkpoints/mask_tokenizer_grpo
-MERGE="python -m generalized.verl.utils.checkpoint.fsdp_hf_merger"
 
-# Stage 1: 5 epochs over 4,941 multi-region samples = 190 steps, 1 node x 8 GPUs.
-MODEL_PATH=$SAMTOK TRAIN_FILES=$D/data/denseworld_multi_4941.parquet \
-  bash projects/rl/qwen3vl_4b_mt.sh trainer.experiment_name=stage1 \
-  worker.rollout.n=6 trainer.total_epochs=5
-$MERGE $CKPT/stage1/global_step_190/actor $CKPT/stage1/ckpt_190
-
-# Stage 2: 40 steps, 2 nodes x 8 GPUs (start a 2-node Ray cluster first).
-MODEL_PATH=$CKPT/stage1/ckpt_190 \
-TRAIN_FILES=$D/data/denseworld_multi_4941.parquet,$D/data/denseworld_multi_4920.parquet,$D/data/gres_no_target_1000.parquet \
-  bash projects/rl/qwen3vl_4b_mt.sh trainer.experiment_name=stage2 trainer.nnodes=2 \
-  trainer.max_steps=40 data.max_pixels=262144 data.mini_rollout_batch_size=16 \
-  worker.actor.micro_batch_size_per_device_for_experience=1 \
-  worker.ref.micro_batch_size_per_device_for_experience=1 trainer.max_try_make_batch=64
-$MERGE $CKPT/stage2/global_step_40/actor $CKPT/stage2/ckpt_40
-
-# Stage 3: the release is the checkpoint after step 1 of a 30-step schedule.
-MODEL_PATH=$CKPT/stage2/ckpt_40 \
-TRAIN_FILES=$D/data/denseworld_single_21219.parquet,$D/data/gres_no_target_14665.parquet \
-  bash projects/rl/qwen3vl_4b_mt.sh trainer.experiment_name=stage3 trainer.nnodes=2 \
-  trainer.max_steps=30 trainer.save_freq=1 worker.actor.optim.lr=2e-6 data.seed=12 \
-  data.mini_rollout_batch_size=16 \
-  worker.actor.micro_batch_size_per_device_for_experience=1 \
-  worker.ref.micro_batch_size_per_device_for_experience=1 trainer.max_try_make_batch=64
-$MERGE $CKPT/stage3/global_step_1/actor $CKPT/stage3/ckpt_1
+MODEL_PATH=$SAMTOK IMAGE_DIR=$D \
+MASK_TOKENIZER_PATH=$SAMTOK/mask_tokenizer_256x2.pth SAM2_PATH=$SAMTOK/sam2.1_hiera_large.pt \
+TRAIN_FILES=$D/data/denseworld_multi_4856.parquet,$D/data/denseworld_multi_4920.parquet,$D/data/denseworld_multi_4938.parquet,$D/data/denseworld_multi_4941.parquet,$D/data/gres_no_target_1000.parquet \
+  bash projects/rl/qwen3vl_4b_mt.sh worker.rollout.n=6
 ```
 
-The merger writes the weights in the dtype stored by FSDP (fp32), about twice
-the size of the bf16 release. RL sampling is stochastic, so a rerun matches the
-release in setup, not bit for bit.
+Merge the resulting FSDP checkpoint to Hugging Face format with
+
+```bash
+python -m generalized.verl.utils.checkpoint.fsdp_hf_merger \
+  checkpoints/mask_tokenizer_grpo/<experiment>/global_step_<n>/actor out_dir
+```
+
+which writes the weights in the dtype stored by FSDP (fp32), about twice the
+size of a bf16 release. RL sampling is stochastic, so a rerun matches the
+published setup, not bit for bit.
