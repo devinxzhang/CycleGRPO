@@ -19,20 +19,15 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import partial
 from typing import Callable, Optional, Tuple, TypedDict
-import re
-import copy
-from PIL import Image
-from io import BytesIO
-import numpy as np
-from pycocotools import mask as mask_utils
-import hydra
 
+import numpy as np
 import torch
-from torchvision.transforms.functional import to_pil_image
+from pycocotools import mask as mask_utils
 from transformers import PreTrainedTokenizer
 
 from ...protocol import DataProto
 from .config import RewardConfig
+
 
 class RewardInput(TypedDict):
     response: str

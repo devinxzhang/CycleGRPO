@@ -218,7 +218,7 @@ class DataParallelPPOActor(BasePPOActor):
 
     def update_policy(self, data: DataProto, do_optimizer_step: bool = True, grad_weight: float = 1.0) -> dict[str, Any]:
         """Update the actor policy.
-        
+
         Args:
             data: DataProto containing the batch data
             do_optimizer_step: If True, perform optimizer step after computing gradients.

@@ -4,8 +4,8 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 
 def load_cases(dataset_path):

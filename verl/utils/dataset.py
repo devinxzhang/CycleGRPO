@@ -14,15 +14,15 @@
 
 import math
 import os
-import re
 import random
+import re
 from collections import defaultdict
 from io import BytesIO
-from typing import Any, Optional, Union, Tuple, List
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from datasets import load_dataset, concatenate_datasets
+from datasets import concatenate_datasets, load_dataset
 from jinja2 import Template
 from PIL import Image
 from PIL.Image import Image as ImageObject
@@ -194,15 +194,15 @@ def sample_single_target_from_multi_target(
         prompt,
         re.DOTALL
     )
-    
+
     if not main_part_match and not main_part_match2:
         # 不匹配预期格式，返回原始内容（但只保留原图）
         return prompt, ground_truth, new_images
-    
+
     # 提取主句中的 region tokens (mask token 或 bbox)
     main_tokens_str = main_part_match.group(2) if main_part_match else main_part_match2.group(2)
     main_tokens = re.findall(region_pattern, main_tokens_str)
-    
+
     if len(main_tokens) <= max_targets:
         # 目标数量不超过 max_targets，使用所有 tokens
         selected_indices = list(range(len(main_tokens)))
@@ -211,7 +211,7 @@ def sample_single_target_from_multi_target(
         # 随机选择 max_targets 个 token（保持原始顺序）
         selected_indices = sorted(random.sample(range(len(main_tokens)), max_targets))
         selected_tokens = [main_tokens[i] for i in selected_indices]
-    
+
     # 2. 构建新的 prompt
     if region_format == "bbox":
         # bbox 格式使用简洁的 prompt
@@ -243,7 +243,7 @@ def sample_single_target_from_multi_target(
 
     # 3. 处理 ground truth
     new_ground_truth = extract_multiple_ground_truths(ground_truth, selected_tokens, selected_indices, len(main_tokens), region_format)
-    
+
     return new_prompt, new_ground_truth, new_images
 
 
@@ -256,14 +256,14 @@ def extract_multiple_ground_truths(
 ) -> str:
     """
     从多目标的 ground truth 中提取与选中 tokens 对应的 ground truths。
-    
+
     Args:
         ground_truth: 原始的多目标 ground truth
         selected_tokens: 选中的 region tokens 列表 (mask token 或 bbox)
         selected_indices: 选中 tokens 在原始列表中的索引
         total_count: 原始目标总数
         region_format: 区域表示格式，"mask_token" 或 "bbox"
-    
+
     Returns:
         str: 提取后的 ground truth
     """
@@ -272,37 +272,37 @@ def extract_multiple_ground_truths(
         region_pattern = r"<\|mt_start\|><\|mt_\d{4}\|><\|mt_\d{4}\|><\|mt_end\|>"
     else:  # bbox
         region_pattern = r"\[\d+,\s*\d+,\s*\d+,\s*\d+\]"
-    
+
     # 检查是否有 <answer>...</answer> 包裹
     answer_match = re.search(r"<answer>(.*?)</answer>", ground_truth, re.DOTALL)
     if answer_match:
         inner_content = answer_match.group(1).strip()
         gt_tokens = re.findall(region_pattern, inner_content)
-        
+
         # 按索引提取选中的 tokens
         extracted_tokens = []
         for idx in selected_indices:
             if idx < len(gt_tokens):
                 extracted_tokens.append(gt_tokens[idx])
-        
+
         if extracted_tokens:
             return f"<answer>{', '.join(extracted_tokens)}</answer>"
-    
+
     # 方式2: 如果 ground truth 中包含 object_ref 格式
     # 格式: <|object_ref_start|>...<|object_ref_end|><|mt_start|>...<|mt_end|>
     object_ref_parts = []
     for token in selected_tokens:
         object_ref_pattern = (
-            r"<\|object_ref_start\|>(.*?)<\|object_ref_end\|>\s*" + 
+            r"<\|object_ref_start\|>(.*?)<\|object_ref_end\|>\s*" +
             re.escape(token)
         )
         match = re.search(object_ref_pattern, ground_truth, re.DOTALL)
         if match:
             object_ref_parts.append(f"<|object_ref_start|>{match.group(1)}<|object_ref_end|>{token}")
-    
+
     if object_ref_parts:
         return " ".join(object_ref_parts)
-    
+
     # 方式3: 按 <|object_ref_start|> 分割
     if "<|object_ref_start|>" in ground_truth:
         parts = re.split(r"(?=<\|object_ref_start\|>)", ground_truth)
@@ -313,7 +313,7 @@ def extract_multiple_ground_truths(
                 extracted_parts.append(parts[idx])
         if extracted_parts:
             return " ".join(extracted_parts)
-    
+
     # 方式4: 按句号分割
     sentences = re.split(r'(?<=[.。])\s*', ground_truth)
     sentences = [s for s in sentences if s.strip()]
@@ -324,7 +324,7 @@ def extract_multiple_ground_truths(
                 extracted_sentences.append(sentences[idx])
         if extracted_sentences:
             return " ".join(extracted_sentences)
-    
+
     # 无法解析，返回原始 ground truth
     return ground_truth
 
@@ -392,7 +392,7 @@ class RLHFDataset(Dataset):
             else:
                 # load remote dataset from huggingface hub
                 ds = load_dataset(single_path, split=data_split)
-            
+
             # # 禁用 Image 自动解码，保持为字符串路径
             # from datasets import Sequence, Value, Image as HFImage
             # new_features = ds.features.copy()
@@ -409,10 +409,10 @@ class RLHFDataset(Dataset):
             # if schema_changed:
             #     ds = ds.cast(new_features)
             #     print(f"Casted Image columns to string for {single_path}")
-            
+
             datasets_list.append(ds)
             print(f"Loaded {len(ds)} samples from {single_path}")
-        
+
         # 合并所有数据集
         if len(datasets_list) == 1:
             self.dataset = datasets_list[0]
@@ -486,47 +486,6 @@ class RLHFDataset(Dataset):
             return [{"role": "user", "content": content_list}]
         else:
             return [{"role": "user", "content": prompt_str}]
-
-    def _get_image_and_mask(self, sample: dict[str, Any]):
-        """
-        从样本中获取image path和随机采样的一个mask_2d
-        支持两种格式:
-        1. mask_2d直接嵌入文本中: <|mt_start|><|mt_xxxx|><|mt_xxxx|><|mt_end|>
-        2. mask_2d在```json```代码块中
-        
-        Args:
-            sample: 包含'image'和'conversations'字段的样本字典
-            
-        Returns:
-            tuple: (image_path, sampled_mask_2d)
-                如果没有找到mask_2d，返回 (image_path, None)
-        """
-        # 1. 获取images路径
-        image_path = sample['image']
-        if isinstance(image_path, list):
-            image_path = image_path[0]
-        
-        # 2. 从gpt回答中提取mask_2d
-        gpt_value = sample['conversations'][1]['value']
-        
-        # 方式1: 尝试从```json```代码块中提取
-        json_match = re.search(r'```json\s*(.*?)\s*```', gpt_value, re.DOTALL)
-        if json_match:
-            try:
-                result = json.loads(json_match.group(1))
-                all_mask_2d = [item['mask_2d'] for item in result]
-                if all_mask_2d:
-                    return image_path, random.choice(all_mask_2d)
-            except:
-                pass
-        
-        # 方式2: 直接从文本中提取mask_2d格式
-        pattern = r'<\|mt_start\|><\|mt_\d+\|><\|mt_\d+\|><\|mt_end\|>'
-        all_mask_2d = re.findall(pattern, gpt_value)
-        if all_mask_2d:
-            return image_path, random.choice(all_mask_2d)
-        
-        return image_path, None        
 
     def _gen_seg_preprocess(self, example: dict[str, Any]):
         seg_messages = self._build_gen_seg_messages(example)
@@ -744,7 +703,7 @@ class RLHFDataset(Dataset):
                 "'during 0-3 seconds'). Replace them with neutral phrases like "
                 "'in this segment'. Output description only."
             )
-        
+
         # example: ['images', 'seg_answer', 'cap_answer', 'seg_problem', 'masks', 'source']
         # 每次取样从多目标样本中随机保留 1 个目标（及其 zoom-in 图）
         # print('before: ', example)
@@ -1007,7 +966,7 @@ def _generate_sequences_with_vllm(gen_batch, llm, sampling_params, pad_token_id)
 if __name__ == "__main__":
     """
     测试脚本：加载数据集 → 加载模型 → 推理生成 → 对比 ground truth。
-    
+
     使用方式（在项目根目录运行）：
         python -m verl.utils.dataset \
             --model_path Qwen/Qwen3-VL-4B-Instruct \
@@ -1031,8 +990,8 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    from vllm import LLM, SamplingParams
     from transformers import AutoProcessor
+    from vllm import LLM, SamplingParams
 
     from ..protocol import DataProto
 
@@ -1144,7 +1103,7 @@ if __name__ == "__main__":
         is_video = "videos" in raw_example and raw_example["videos"] is not None
         is_image = "images" in raw_example and raw_example["images"] is not None
 
-        print(f"\n  [Caption 任务]")
+        print("\n  [Caption 任务]")
         print(f"  cap_prompt: {sample.get('cap_prompt', None)}")
 
         cap_task_dict = {
@@ -1194,12 +1153,12 @@ if __name__ == "__main__":
         # print(f"  seg_ground_truth: {str(seg_gt)}")
 
         # ========== 多模态数据信息 ==========
-        print(f"\n  [多模态信息]")
+        print("\n  [多模态信息]")
         if is_video:
-            print(f"  类型: 视频")
+            print("  类型: 视频")
             print(f"  视频路径: {raw_example['videos']}")
         elif is_image:
-            print(f"  类型: 图像")
+            print("  类型: 图像")
             img_paths = raw_example['images']
             if isinstance(img_paths, list):
                 print(f"  图像数量: {len(img_paths)}")
@@ -1207,7 +1166,7 @@ if __name__ == "__main__":
             else:
                 print(f"  图像路径: {img_paths}")
         else:
-            print(f"  类型: 纯文本")
+            print("  类型: 纯文本")
 
     print(f"\n{'=' * 60}")
     print(f"测试完成，共处理 {len(indices)} 个样本")

@@ -1,29 +1,26 @@
 import argparse
+import base64
 import copy
-import math
+import json
 import os
 import sys
+
+import hydra
+import numpy as np
 import torch
 import torchvision
-import tqdm
-from pycocotools import mask as mask_utils
-import numpy as np
-import random
-import re
 from PIL import Image
-import json
-import uuid
-import hydra
-import base64
-import io
+from pycocotools import mask as mask_utils
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from input_checks import require_inputs  # noqa: E402
+from torchvision.transforms.functional import to_pil_image
 
-from torchvision.transforms.functional import resize, to_pil_image
+
 class DirectResize:
     def __init__(self, target_length: int) -> None:
         self.target_length = target_length
@@ -97,7 +94,7 @@ def main():
             cfg_path="sam2.1_hiera_l.yaml",
             ckpt_path="pretrained_weights/sam2.1_hiera_large.pt",
         )
-        
+
         vq_sam2_config = VQ_SAM2Config(
             sam2_config=sam2_config,
             codebook_size=CODEBOOK_SIZE,
@@ -114,7 +111,7 @@ def main():
 
     with open(ann_path, 'r') as f:
         eval_samples = json.load(f)
-    
+
     all_items = []
     for eval_sample in eval_samples:
         image_file = eval_sample['image']
@@ -232,12 +229,12 @@ def main():
         #             cropped_boxes,
         #             reconstruct_mask=True,
         #         )
-            
+
         #     crop_quant_codes = cropped_vq_sam2_output.quant_codes.squeeze().detach().cpu().numpy().astype(np.int32).tolist()
         #     remap_crop_quant_codes = [depth_idx*CODEBOOK_SIZE+quant_code for depth_idx, quant_code in enumerate(crop_quant_codes)]
         #     crop_quant_codes_str = MT_START_TOKEN + ''.join([MT_CONTEXT_TOKEN.format(str(code).zfill(4)) for code in remap_crop_quant_codes]) + MT_END_TOKEN
         #     zoom_in_quant_codes_str_list.append(crop_quant_codes_str)
-            
+
         #     buffer = io.BytesIO()
         #     if resized_crop_image is None:
         #         cropped_image.save(buffer, format='JPEG')
@@ -246,7 +243,7 @@ def main():
         #     buffer.seek(0)
         #     b64 = base64.b64encode(buffer.read()).decode("utf-8")
         #     zoom_in_images.append(b64)
-        
+
         with open(image_path, "rb") as f:
             global_b64 = base64.b64encode(f.read()).decode()
 
@@ -286,7 +283,7 @@ def main():
 
         # Inference: Generation of the output
         generated_ids = model.generate(
-            **inputs, 
+            **inputs,
             max_new_tokens=1024,
             do_sample=False,  # 关闭采样，使用贪婪解码
             top_p=1.0,  # 配合do_sample=False使用
@@ -305,9 +302,9 @@ def main():
         all_items.append(save_item)
 
     print(len(all_items), " items")
-    
+
     with open(args.output, 'w') as f:
         json.dump(all_items, f, indent=4)
 
-if __name__ == '__main__':     
+if __name__ == '__main__':
     main()

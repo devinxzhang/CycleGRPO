@@ -1,15 +1,14 @@
 import argparse
-import os
-import sys
-import torch
-import torchvision
-import tqdm
-import re
-from PIL import Image
 import json
+import os
+import re
+import sys
 
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+import tqdm
+from PIL import Image
 from qwen_vl_utils import smart_resize
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from input_checks import require_inputs  # noqa: E402
@@ -143,7 +142,6 @@ def main():
     for data_dict in tqdm.tqdm(all_data_dict[_start_:_end_]):
         image_file = data_dict['image_path']
         item_idx = data_dict['idx']
-        label = data_dict['label']
         caption = data_dict['caption']
         class_id = data_dict['class_id']
 

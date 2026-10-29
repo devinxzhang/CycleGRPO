@@ -23,13 +23,16 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Iterable, Sequence
 
-from .cyclegrpo_profiles import (
+# Re-exported: callers import the source ids from this module alongside the
+# reward helpers below, so they stay part of its public surface.
+from .cyclegrpo_profiles import (  # noqa: F401
     ATOMIC_SPATIOTEMPORAL_SOURCE,
     SPATIOTEMPORAL_SOURCE,
     TRAJECTORY_LOCALIZATION_SOURCE,
     TRAJECTORY_SPATIOTEMPORAL_SOURCE,
     TRAJECTORY_UNDERSTANDING_SOURCE,
 )
+
 
 # Used only to remove already-valid claims in strict format checks below.  The
 # character classes deliberately cannot cross tag delimiters, so malformed

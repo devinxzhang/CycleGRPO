@@ -113,7 +113,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
 
     def sync_weights_only(self):
         """Sync model weights to vllm without wake_up/sleep.
-        
+
         This is useful when the vLLM engine is already loaded by another sharding manager,
         and we just want to swap in different weights (e.g., switching from actor to ref model).
         """

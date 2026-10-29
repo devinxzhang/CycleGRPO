@@ -33,7 +33,6 @@ import torch
 from ray.experimental.tqdm_ray import tqdm
 from torchdata.stateful_dataloader import StatefulDataLoader
 from transformers import PreTrainedTokenizer, ProcessorMixin
-from torch.utils.data._utils.collate import default_collate
 
 from ..protocol import DataProto, pad_dataproto_to_divisor, unpad_dataproto
 from ..single_controller.base import Worker
@@ -62,7 +61,7 @@ from .metrics import (
     compute_timing_metrics,
     reduce_metrics,
 )
-from pycocotools import mask as mask_utils
+
 
 class Role(IntEnum):
     """
@@ -754,8 +753,8 @@ class RayPPOTrainer:
         )
 
         # prepare gen_batch for generation of segmentation training
-        task_dict = {k.replace(f'seg_', ''): gen_seg_batch.batch.pop(k) for k in [f'seg_input_ids', f'seg_attention_mask', f'seg_position_ids']}
-        task_dict.update({k.replace(f'seg_', ''): gen_seg_batch.non_tensor_batch.pop(k) for k in [f'seg_raw_prompt_ids', f'seg_multi_modal_data']})
+        task_dict = {k.replace('seg_', ''): gen_seg_batch.batch.pop(k) for k in ['seg_input_ids', 'seg_attention_mask', 'seg_position_ids']}
+        task_dict.update({k.replace('seg_', ''): gen_seg_batch.non_tensor_batch.pop(k) for k in ['seg_raw_prompt_ids', 'seg_multi_modal_data']})
         gen_batch = DataProto.from_single_dict(task_dict, meta_info=batch.meta_info)
         gen_batch.meta_info.update({'task': 'segmentation'})
         gen_batch.non_tensor_batch.update({'seg_ground_truth': gen_seg_batch.non_tensor_batch['seg_ground_truth']})
@@ -764,12 +763,12 @@ class RayPPOTrainer:
         first_mm = gen_batch.non_tensor_batch['multi_modal_data'][0]
         media_key = 'images' if 'images' in first_mm else 'videos'
         gen_batch.non_tensor_batch.update({media_key: gen_batch.non_tensor_batch['multi_modal_data']})
-        
+
         # generate a batch using ref (pretrained) model
         # generate_sequences_with_ref automatically swaps weights to ref model and back to actor
         ori_rollout_n = self.config.worker.rollout.n
         self.config.worker.rollout.n = 6
-        
+
         # gen_batch_output = self.actor_rollout_ref_wg.generate_sequences_with_ref(gen_batch)
         gen_batch_output = self.actor_rollout_ref_wg.generate_sequences(gen_batch)
         # gen_batch_output.batch.keys(): ['prompts', 'responses', 'input_ids', 'attention_mask', 'response_mask', 'position_ids']
@@ -779,11 +778,11 @@ class RayPPOTrainer:
         # gen_batch_output has n_prompts * n_samples results, aggregate to n_prompts
         n_samples = self.config.worker.rollout.n  # 32
         n_prompts = len(gen_batch)
-        
+
         # Add uid to gen_batch_output: repeat each uid n_samples times to match the expanded batch size
         gen_batch_output.non_tensor_batch['uid'] = np.repeat(gen_seg_batch.non_tensor_batch["uid"], n_samples)
         gen_batch_output.non_tensor_batch['source'] = np.repeat(gen_seg_batch.non_tensor_batch["source"], n_samples)
-        
+
         if 'mask_token_accuracy' in gen_batch_output.non_tensor_batch:
             flat_accuracy = np.array(gen_batch_output.non_tensor_batch['mask_token_accuracy']).astype(float)
             # Compute mean accuracy for each prompt
@@ -794,7 +793,7 @@ class RayPPOTrainer:
             batch.non_tensor_batch['iou_scores'] = np.array(mean_accuracy, dtype=object)
             # Also add iou_scores to gen_batch_output: repeat each mean_accuracy n_samples times
             gen_batch_output.non_tensor_batch['iou_scores'] = np.repeat(mean_accuracy, n_samples).astype(object)
-        
+
         if 'format_correct' in gen_batch_output.non_tensor_batch:
             flat_format_correct = np.array(gen_batch_output.non_tensor_batch['format_correct']).astype(int)
             # Count how many samples have correct format for each prompt
@@ -870,7 +869,7 @@ class RayPPOTrainer:
                     with timer("old", timing_raw):
                         # batch.batch.keys(): ['prompts', 'responses', 'input_ids', 'attention_mask', 'response_mask', 'position_ids']
                         # batch.non_tensor_batch.keys(): ['masks', 'source', 'cap_ground_truth', 'seg_ground_truth', 'uid', 'multi_modal_data', 'iou_scores', 'correct_mask']
-                        old_log_probs = self.actor_rollout_ref_wg.compute_log_probs(non_cycle_batch) 
+                        old_log_probs = self.actor_rollout_ref_wg.compute_log_probs(non_cycle_batch)
                         non_cycle_batch = non_cycle_batch.union(old_log_probs)
 
                     # compute ref_log_probs
@@ -916,7 +915,7 @@ class RayPPOTrainer:
 
                         critic_metrics = reduce_metrics(critic_output.non_tensor_batch)
                         metrics.update(critic_metrics)
-                    
+
                     # Clear multi-modal cache before switching to segmentation task
                     self.actor_rollout_ref_wg.clear_multi_modal_cache()
 
@@ -990,7 +989,7 @@ class RayPPOTrainer:
 
                         critic_metrics = reduce_metrics(critic_output.non_tensor_batch)
                         metrics.update(critic_metrics)
-                    
+
                     # Clear multi-modal cache before switching to segmentation task
                     self.actor_rollout_ref_wg.clear_multi_modal_cache()
 
@@ -1005,11 +1004,11 @@ class RayPPOTrainer:
                     if cycle_seg_batch is not None and "token_level_scores" not in cycle_seg_batch.batch:
                         with timer("reward", timing_raw):
                             seg_reward_ref = self.reward_fn.compute_reward.remote(self.global_step, cycle_seg_batch, task='segmentation')
-                    
+
                     # recompute old_log_probs
                     if cycle_seg_batch is not None:
                         with timer("old", timing_raw):
-                            old_log_probs = self.actor_rollout_ref_wg.compute_log_probs(cycle_seg_batch) 
+                            old_log_probs = self.actor_rollout_ref_wg.compute_log_probs(cycle_seg_batch)
                             cycle_seg_batch = cycle_seg_batch.union(old_log_probs)
 
                     # compute ref_log_probs
@@ -1056,7 +1055,7 @@ class RayPPOTrainer:
 
                         critic_metrics = reduce_metrics(critic_output.non_tensor_batch)
                         metrics.update(critic_metrics)
-                    
+
                     # Clear multi-modal cache before switching to segmentation task
                     self.actor_rollout_ref_wg.clear_multi_modal_cache()
 
@@ -1081,32 +1080,31 @@ class RayPPOTrainer:
                     # Case 1: Both tasks - Use gradient accumulation for cap_batch and seg_batch
                     cap_batch_size = len(cap_batch) if cap_batch is not None else 0
                     seg_batch_size = len(seg_batch) if seg_batch is not None else 0
-                    total_size = cap_batch_size + seg_batch_size
-                    
+
                     # Caption 和 Segmentation 各占 0.5
                     cap_grad_weight = 0.5
                     seg_grad_weight = 0.5
 
                     if self.config.trainer.critic_warmup <= self.global_step:
                         self.actor_rollout_ref_wg.clear_multi_modal_cache()
-                        
+
                         with timer("update_actor", timing_raw):
                             actor_metrics = {}
-                            
+
                             # Step 1: Accumulate gradients from cap_batch (combined non_single + single)
                             if cap_batch is not None and cap_batch_size > 0:
                                 cap_batch.meta_info['grad_weight'] = cap_grad_weight
                                 cap_batch.meta_info['global_batch_size_per_device'] = len(cap_batch) // self.actor_rollout_ref_wg.world_size
                                 cap_output = self.actor_rollout_ref_wg.accumulate_actor_gradients(cap_batch)
                                 actor_metrics.update({f"cap_{k}": v for k, v in reduce_metrics(cap_output.non_tensor_batch).items()})
-                            
+
                             # Step 2: Accumulate gradients from segmentation batch
                             if seg_batch is not None and seg_batch_size > 0:
                                 seg_batch.meta_info['grad_weight'] = seg_grad_weight
                                 seg_batch.meta_info['global_batch_size_per_device'] = len(seg_batch) // self.actor_rollout_ref_wg.world_size
                                 seg_output = self.actor_rollout_ref_wg.accumulate_actor_gradients(seg_batch)
                                 actor_metrics.update({f"seg_{k}": v for k, v in reduce_metrics(seg_output.non_tensor_batch).items()})
-                            
+
                             # Step 3: Perform optimizer step with accumulated gradients
                             opt_output = self.actor_rollout_ref_wg.step_actor_optimizer()
 
@@ -1119,7 +1117,7 @@ class RayPPOTrainer:
                     # Case 2: Only captioner - Use cap_batch to update
                     if self.config.trainer.critic_warmup <= self.global_step:
                         self.actor_rollout_ref_wg.clear_multi_modal_cache()
-                        
+
                         with timer("update_actor", timing_raw):
                             actor_output = self.actor_rollout_ref_wg.update_actor(cap_batch)
 
@@ -1130,7 +1128,7 @@ class RayPPOTrainer:
                     # Case 3: Only segmenter - Use seg_batch to update
                     if self.config.trainer.critic_warmup <= self.global_step:
                         self.actor_rollout_ref_wg.clear_multi_modal_cache()
-                        
+
                         with timer("update_actor", timing_raw):
                             actor_output = self.actor_rollout_ref_wg.update_actor(seg_batch)
 
@@ -1157,7 +1155,7 @@ class RayPPOTrainer:
             metrics.update(compute_data_metrics(batch=cap_batch, use_critic=self.use_critic))
             metrics.update(compute_timing_metrics(batch=cap_batch, timing_raw=timing_raw))
             metrics.update(compute_throughout_metrics(batch=cap_batch, timing_raw=timing_raw, num_gpus=num_gpus))
-            if seg_batch is not None:           
+            if seg_batch is not None:
                 metrics.update(compute_data_metrics(batch=seg_batch, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=seg_batch, timing_raw=timing_raw))
                 metrics.update(compute_throughout_metrics(batch=seg_batch, timing_raw=timing_raw, num_gpus=num_gpus))

@@ -5,8 +5,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from result_store import (count_current_results, load_cases, load_current_result,
-                          make_run_id, save_result, valid_compressed_rle)
+from result_store import (
+    count_current_results,
+    load_cases,
+    load_current_result,
+    make_run_id,
+    save_result,
+    valid_compressed_rle,
+)
 
 
 class ResultStoreTest(unittest.TestCase):

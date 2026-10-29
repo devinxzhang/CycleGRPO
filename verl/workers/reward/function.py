@@ -19,20 +19,15 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import partial
 from typing import Callable, Optional, Tuple, TypedDict
-import re
-import copy
-from PIL import Image
-from io import BytesIO
-import numpy as np
-from pycocotools import mask as mask_utils
-import hydra
 
+import numpy as np
 import torch
-from torchvision.transforms.functional import to_pil_image
+from pycocotools import mask as mask_utils
 from transformers import PreTrainedTokenizer
 
 from ...protocol import DataProto
 from .config import RewardConfig
+
 
 class RewardInput(TypedDict):
     response: str
@@ -132,7 +127,7 @@ class SequentialFunctionRewardManager(FunctionRewardManager):
             #     gt_masks = torch.stack([torch.from_numpy(np.ascontiguousarray(x.copy())) for x in gt_masks])
             pred_masks = None
             gt_masks = None
-            
+
             score = self.reward_fn(
                 {
                     "response": response_str,
@@ -158,7 +153,6 @@ class BatchFunctionRewardManager(FunctionRewardManager):
         reward_inputs = []
         response_ids = data.batch["responses"]
         response_length = torch.sum(data.batch["response_mask"], dim=-1)
-        mask_token_accuracy = data.non_tensor_batch.get("mask_token_accuracy") if task == 'segmentation' else None
         seg_ground_truth = data.non_tensor_batch.get("seg_ground_truth")
         cap_ground_truth = data.non_tensor_batch.get("cap_ground_truth")
         for i in range(len(data)):
@@ -176,7 +170,7 @@ class BatchFunctionRewardManager(FunctionRewardManager):
                     "task": task,
                     "iou_scores": data.non_tensor_batch["iou_scores"][i] if data.non_tensor_batch["source"][i] in ['groundingme', 'denseworld_single', 'denseworld_multiple', 'tg_multi_merged', 'dam_cyclegrpo', None] else None,
                     "mask_token_accuracy": data.non_tensor_batch["mask_token_accuracy"][i] if task == 'segmentation' else None,
-                    # "correct_mask": data.non_tensor_batch["correct_mask"][i], 
+                    # "correct_mask": data.non_tensor_batch["correct_mask"][i],
                     # "image": images[i]['images'][0] if task == 'segmentation' else None,
                     # "gt_masks": masks[i] if task == 'segmentation' else None,
                     "cap_ground_truth": cap_ground_truth[i] if cap_ground_truth is not None else None,

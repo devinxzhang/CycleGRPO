@@ -26,12 +26,7 @@ from vllm import LLM, RequestOutput, SamplingParams
 from ...protocol import DataProto
 from ...utils import torch_functional as VF
 from ...utils.dataset import (
-    process_atomic_spatiotemporal_query_video,
     process_image,
-    process_joint_spatiotemporal_query_video,
-    process_open_o3_frame_sequence,
-    process_trajectory_spatiotemporal_query_video,
-    process_video,
 )
 from ...utils.torch_dtypes import PrecisionType
 from .base import BaseRollout

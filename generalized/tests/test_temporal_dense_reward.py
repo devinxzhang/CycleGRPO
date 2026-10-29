@@ -1,5 +1,5 @@
-from generalized.verl.utils.temporal_dense_reward import temporal_dense_components
 from generalized.verl.utils.spatiotemporal import spatiotemporal_temporal_proximity_reward
+from generalized.verl.utils.temporal_dense_reward import temporal_dense_components
 
 
 def test_dense_interval_reward_orders_disjoint_predictions():
