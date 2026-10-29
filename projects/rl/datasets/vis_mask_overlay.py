@@ -1,43 +1,18 @@
 import argparse
 import os
-import sys
-import collections
-import os.path as osp
 import random
-import copy
-from typing import Dict, List, Any, Tuple
-from PIL import Image
+import re
+
+import hydra
 import numpy as np
 import torch
-import torchvision
-from pycocotools import mask as mask_utils
-import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
-import re
-import uuid
-import hydra
-import base64
-from tqdm import tqdm
-from PIL import Image, ImageDraw, ImageColor
-from datasets import Dataset, DatasetDict, Sequence
-from datasets import Image as ImageData
 from datasets import load_dataset
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-import queue
+from PIL import Image, ImageColor
+from tqdm import tqdm
 
-import mmengine
-from mmengine.dataset import BaseDataset
-import pycocotools.mask as mask_util
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
-from transformers import Sam2Processor, Sam2Model
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from torchvision.transforms.functional import resize, to_pil_image
+
 def parse_mask_token(mask_2d: str, codebook_size: int = 256) -> list[int]:
     pattern = r'<\|mt_(\d+)\|>'
     matches = re.findall(pattern, mask_2d)
@@ -67,7 +42,7 @@ def overlay_mask_on_image(image: Image.Image, mask: np.ndarray, color_hex="#00FF
 
 def parse_args():
     parser = argparse.ArgumentParser(description='RefCocoSeg')
-    parser.add_argument('--model_path', 
+    parser.add_argument('--model_path',
         default="Qwen/Qwen3-VL-4B-SAMTok",
         help='hf model path.')
     parser.add_argument(
@@ -102,16 +77,13 @@ def main():
     # 初始化 VQ-SAM2 模型用于 decode mask token
     CODEBOOK_SIZE = 256
     CODEBOOK_DEPTH = 2
-    MT_START_TOKEN = '<|mt_start|>'
-    MT_END_TOKEN = '<|mt_end|>'
-    MT_CONTEXT_TOKEN = '<|mt_{}|>'
-    
+
     with hydra.initialize(version_base=None, config_path="../../../projects/transformers/vq_sam2/sam2/sam2_configs"):
         sam2_config = SAM2Config(
             cfg_path="sam2.1_hiera_l.yaml",
             ckpt_path="Qwen/sam2.1_hiera_large.pt",
         )
-        
+
         vq_sam2_config = VQ_SAM2Config(
             sam2_config=sam2_config,
             codebook_size=CODEBOOK_SIZE,
@@ -123,7 +95,7 @@ def main():
     state = torch.load(args.vq_sam2_path, map_location="cpu")
     vq_sam2.load_state_dict(state)
     vq_sam2_image_processor = DirectResize(1024)
-    
+
     print("VQ-SAM2 model loaded successfully")
 
     os.makedirs("vis_mask_overlay", exist_ok=True)

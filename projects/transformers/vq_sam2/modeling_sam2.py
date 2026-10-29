@@ -1,11 +1,10 @@
-import os
 import torch
-from os import PathLike
+from hydra.utils import instantiate
 from transformers import PreTrainedModel
-from transformers.configuration_utils import PretrainedConfig
+
 from .configuration_vq_sam2 import SAM2Config
 
-from hydra.utils import instantiate
+
 # from .sam2.utils.load_checkpoint import load_checkpoint_with_prefix, load_state_dict_to_model
 
 
@@ -20,7 +19,7 @@ class SAM2Model(PreTrainedModel):
         super().__init__(config)
 
         self.sam2_model = instantiate(config.cfg.model, _recursive_=True)
-        
+
         self.hidden_dim = self.sam2_model.hidden_dim
         self.img_mean = (0.485, 0.456, 0.406)
         self.img_std = (0.229, 0.224, 0.225)
@@ -38,11 +37,11 @@ class SAM2Model(PreTrainedModel):
     #     load_state_dict_to_model(model.sam2_model, state_dict)
 
     #     return model
-    
+
     # def load_pretrained_weights(self, ckpt_path, strict=True):
     #     state_dict = load_checkpoint_with_prefix(ckpt_path)
     #     load_state_dict_to_model(self.sam2_model, state_dict, strict=strict)
-        
+
     def preprocess_image(self, image: torch.Tensor) -> torch.Tensor:
         image = image / 255.
         img_mean = torch.tensor(self.img_mean, dtype=image.dtype, device=image.device)[:, None, None]
@@ -50,7 +49,7 @@ class SAM2Model(PreTrainedModel):
         image -= img_mean
         image /= img_std
         return image
-    
+
     def encode_mask_box_input(self, sam_states, mask_input, box_input_normalized, sam2_resolution=1024):
         if box_input_normalized is not None:
             box_input_normalized = box_input_normalized.reshape(-1, 2, 2)
@@ -60,7 +59,7 @@ class SAM2Model(PreTrainedModel):
             concat_points = (box_input_normalized, box_labels)
         else:
             concat_points = None
-        
+
         sam_mask_prompt = [torch.nn.functional.interpolate(
             one_mask.unsqueeze(0).float(),
             size=self.sam2_model.sam_prompt_encoder.mask_input_size,
@@ -129,7 +128,7 @@ class SAM2Model(PreTrainedModel):
         else:
             pred_masks = low_res_masks
         return pred_masks
-    
+
     def get_sam2_embeddings(self, images, expand_size=1):
         # Step 1: inference the backbone with the images
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):

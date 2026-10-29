@@ -18,9 +18,9 @@ from typing import Any
 
 import pandas as pd
 
+from generalized.verl.utils.cyclegrpo_profiles import OPEN_O3_UNDERSTANDING_SOURCE
 from projects.rl.datasets.prepare_open_o3_spatiotemporal_cyclegrpo import DEFAULT_DATA_ROOT
 from projects.rl.datasets.prepare_open_o3_unified_cyclegrpo import resolve_media_path
-from generalized.verl.utils.cyclegrpo_profiles import OPEN_O3_UNDERSTANDING_SOURCE
 
 
 VQA_TASKS = frozenset({"General video QA MCQ", "General video QA Free-form"})

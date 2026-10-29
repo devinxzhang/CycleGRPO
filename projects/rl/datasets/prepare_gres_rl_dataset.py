@@ -1,35 +1,19 @@
-import os
-import sys
-import collections
-import os.path as osp
-import random
 import copy
-from typing import Dict, List
-from PIL import Image
-import numpy as np
-import torch
-import torchvision
-from pycocotools import mask as mask_utils
 import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
+import os
 import re
 
+import numpy as np
+import torch
+import tqdm
 from datasets import Dataset, DatasetDict, Sequence
 from datasets import Image as ImageData
-
-import mmengine
-from mmengine.dataset import BaseDataset
-
+from PIL import Image
+from pycocotools import mask as mask_utils
 from xtuner.model.utils import guess_load_checkpoint
 
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 from projects.vlm.vq_sam2.models import DirectResize
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.coconut_meta import COCO_META
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.gcg_process import glamm_granf_map_fn
 
 
 def decode_mask(object_masks, ori_height, ori_width):
@@ -76,9 +60,6 @@ def extract_mt_token_ids_v1(text):
     return [int(x) for x in re.findall(pattern, text)]
 
 def main():
-    MT_START_TOKEN = '<|mt_start|>'
-    MT_END_TOKEN = '<|mt_end|>'
-    MT_CONTEXT_TOKEN = '<|mt_{}|>'
 
     sam2_config = SAM2Config(
         cfg_path="sam2.1_hiera_l.yaml",
@@ -106,7 +87,7 @@ def main():
         if key.startswith('hf_model.'):
             new_key = new_key[len('hf_model.'):]
         pretrained_state_dict_new[new_key] = pretrained_state_dict[key]
-    
+
     vq_sam2.load_state_dict(pretrained_state_dict_new)
 
     sam2_image_processor = DirectResize(1024)
@@ -117,12 +98,11 @@ def main():
         json_data = json.load(f)
 
     shard_items = []
-    
+
     for index in tqdm.tqdm(list(range(len(json_data)))):
         data_dict = json_data[index]
 
         image_path = data_dict['image']
-        from_human = data_dict['conversations'][0]['value']
         from_gpt = data_dict['conversations'][1]['value']
 
         quant_ids = extract_mt_token_ids_v1(from_gpt)
@@ -182,7 +162,7 @@ def main():
         }
 
         shard_items.append(ret_data_dict)
-    
+
     trainset = Dataset.from_generator(generate_data, gen_kwargs={"conversation_items": shard_items})
     dataset = DatasetDict({"train": trainset}).cast_column("images", Sequence(ImageData()))
     # dataset.push_to_hub("zhouyik/grandf1k")

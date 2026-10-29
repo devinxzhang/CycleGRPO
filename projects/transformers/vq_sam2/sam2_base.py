@@ -1,13 +1,13 @@
 import os
+
 import torch
 import torch.nn.functional as F
 
-from .sam2.modeling.sam2_base import SAM2Base as _SAM2Base
-from .sam2.modeling.sam2_base import NO_OBJ_SCORE
 from .sam2.modeling.sam.mask_decoder import MaskDecoder
+from .sam2.modeling.sam.mask_encoder import MaskEncoder
 from .sam2.modeling.sam.prompt_encoder import PromptEncoder
 from .sam2.modeling.sam.transformer import TwoWayTransformer
-from .sam2.modeling.sam.mask_encoder import MaskEncoder
+from .sam2.modeling.sam2_base import SAM2Base as _SAM2Base
 from .sam2.modeling.sam2_utils import MLP
 
 
@@ -72,7 +72,7 @@ class SAM2Base(_SAM2Base):
             self.obj_ptr_tpos_proj = torch.nn.Linear(self.hidden_dim, self.mem_dim)
         else:
             self.obj_ptr_tpos_proj = torch.nn.Identity()
-    
+
 
     def track_step(
         self,
@@ -174,8 +174,8 @@ class SAM2Base(_SAM2Base):
             current_out["maskmem_pos_enc"] = None
 
         return current_out
-    
-    
+
+
     def _forward_sam_heads(
         self,
         backbone_features,
@@ -240,7 +240,7 @@ class SAM2Base(_SAM2Base):
             # If no points are provide, pad with an empty point (with label -1)
             sam_point_coords = torch.zeros(B, 1, 2, device=device)
             sam_point_labels = -torch.ones(B, 1, dtype=torch.int32, device=device)
-        
+
         # b) Handle mask prompts
         if mask_inputs is not None:
             # If mask_inputs is provided, downsize it into low-res mask input if needed
@@ -260,7 +260,7 @@ class SAM2Base(_SAM2Base):
             # Otherwise, simply feed None (and SAM's prompt encoder will add
             # a learned `no_mask_embed` to indicate no mask input in this case).
             sam_mask_prompt = None
-        
+
         sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
             points=(sam_point_coords, sam_point_labels),
             boxes=None,
@@ -273,7 +273,7 @@ class SAM2Base(_SAM2Base):
             assert sparse_embeddings.size(0) == language_embed.size(0)
             assert sparse_embeddings.size(2) == language_embed.size(2)
             sparse_embeddings = torch.cat([sparse_embeddings, language_embed], dim=1)
-        
+
         (
             low_res_multimasks,
             ious,

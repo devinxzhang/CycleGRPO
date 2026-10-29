@@ -26,17 +26,19 @@ from typing import Any
 
 import pandas as pd
 
-from projects.rl.datasets.prepare_open_o3_spatiotemporal_cyclegrpo import (
-    DEFAULT_DATA_ROOT,
-    _split_name,
-    build_claims,
-    resolve_video_path as resolve_stgr_video_path,
-)
+from generalized.verl.utils.cyclegrpo_profiles import VIDEO_CAPTION_ANTI_TIME_INSTRUCTION
 from generalized.verl.utils.spatiotemporal import (
     SPATIOTEMPORAL_SOURCE,
     serialize_spatiotemporal_claims,
 )
-from generalized.verl.utils.cyclegrpo_profiles import VIDEO_CAPTION_ANTI_TIME_INSTRUCTION
+from projects.rl.datasets.prepare_open_o3_spatiotemporal_cyclegrpo import (
+    DEFAULT_DATA_ROOT,
+    _split_name,
+    build_claims,
+)
+from projects.rl.datasets.prepare_open_o3_spatiotemporal_cyclegrpo import (
+    resolve_video_path as resolve_stgr_video_path,
+)
 
 
 SPATIAL_TASK = "visual QA"

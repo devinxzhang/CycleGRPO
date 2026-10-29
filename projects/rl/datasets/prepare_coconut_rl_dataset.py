@@ -1,43 +1,23 @@
 import argparse
+import json
 import os
-import sys
-import collections
-import os.path as osp
 import random
-import copy
-from typing import Dict, List, Any, Tuple
-from PIL import Image
+import re
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, List, Tuple
+
+import hydra
 import numpy as np
 import torch
 import torchvision
+from datasets import Dataset
+from PIL import Image, ImageColor, ImageDraw
 from pycocotools import mask as mask_utils
-import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
-import re
-import uuid
-import hydra
-import base64
+from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
-from PIL import Image, ImageDraw, ImageColor
-from datasets import Dataset, DatasetDict, Sequence
-from datasets import Image as ImageData
-from datasets import load_dataset
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-import queue
 
-import mmengine
-from mmengine.dataset import BaseDataset
-import pycocotools.mask as mask_util
-
-from transformers import Sam2Processor, Sam2Model
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from torchvision.transforms.functional import resize, to_pil_image
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 
 
 def get_image_and_all_masks(sample: dict[str, Any]):
@@ -46,10 +26,10 @@ def get_image_and_all_masks(sample: dict[str, Any]):
     支持两种格式:
     1. mask_2d直接嵌入文本中: <|mt_start|><|mt_xxxx|><|mt_xxxx|><|mt_end|>
     2. mask_2d在```json```代码块中
-    
+
     Args:
         sample: 包含'image'和'conversations'字段的样本字典
-        
+
     Returns:
         tuple: (image_path, list[mask_2d])
                如果没有找到mask_2d，返回 (image_path, [])
@@ -58,10 +38,10 @@ def get_image_and_all_masks(sample: dict[str, Any]):
     image_path = sample['image']
     if isinstance(image_path, list):
         image_path = image_path[0]
-    
+
     # 2. 从gpt回答中提取mask_2d
     gpt_value = sample['conversations'][1]['value']
-    
+
     # 方式1: 尝试从```json```代码块中提取
     json_match = re.search(r'```json\s*(.*?)\s*```', gpt_value, re.DOTALL)
     if json_match:
@@ -70,26 +50,26 @@ def get_image_and_all_masks(sample: dict[str, Any]):
             all_mask_2d = [item['mask_2d'] for item in result]
             if all_mask_2d:
                 return image_path, all_mask_2d
-        except:
+        except (json.JSONDecodeError, KeyError, TypeError):
             pass
-    
+
     # 方式2: 直接从文本中提取mask_2d格式
     pattern = r'<\|mt_start\|><\|mt_\d+\|><\|mt_\d+\|><\|mt_end\|>'
     all_mask_2d = re.findall(pattern, gpt_value)
     if all_mask_2d:
         return image_path, all_mask_2d
-    
+
     return image_path, []
 
 
 def parse_mask_token(mask_2d: str, codebook_size: int = 256) -> list[int]:
     """
     从mask token字符串中解析出quant codes
-    
+
     Args:
         mask_2d: 如 <|mt_start|><|mt_0012|><|mt_0268|><|mt_end|>
         codebook_size: codebook大小，默认256
-        
+
     Returns:
         list[int]: 解析出的codes列表
     """
@@ -100,34 +80,34 @@ def parse_mask_token(mask_2d: str, codebook_size: int = 256) -> list[int]:
 
 
 def build_sample_dict_single_object(
-    image_path: str, 
-    mask_token: str, 
+    image_path: str,
+    mask_token: str,
     zoomin_image_path: str = None,
     zoomin_mask_token: str = None,
 ) -> dict[str, Any]:
     """
     为单个物体构建训练样本dict
-    
+
     Args:
         image_path: 原图路径
         mask_token: 该物体的mask token
         zoomin_image_path: zoom-in图像路径（可选）
         zoomin_mask_token: zoom-in的mask token（可选）
-        
+
     Returns:
         dict: 包含['images', 'cap_problem', 'cap_answer', 'seg_problem', 'seg_answer', 'masks', 'source']
     """
     # 构建问题字符串
     cap_problem = f'<image>\nProvide a detailed description of this region {mask_token}.'
-    
+
     # 构建图像列表
     image_paths = [image_path]
-    
+
     # 添加zoom-in信息
     if zoomin_image_path and zoomin_mask_token:
         cap_problem += f' Zoom in with the perspective as <image>, {zoomin_mask_token}.'
         image_paths.append(zoomin_image_path)
-    
+
     return {
         'images': image_paths,
         'cap_problem': cap_problem,
@@ -230,22 +210,22 @@ def concat_side_by_side(img_left, img_right):
     """
     w1, h1 = img_left.size
     w2, h2 = img_right.size
-    
+
     # 1. 创建新画布：宽度相加，高度取最大值
     new_w = w1 + w2
     new_h = max(h1, h2)
     # 创建RGB模式的空白图
-    new_img = Image.new('RGB', (new_w, new_h), color=(255, 255, 255)) 
-    
+    new_img = Image.new('RGB', (new_w, new_h), color=(255, 255, 255))
+
     # 2. 粘贴图片
     new_img.paste(img_left, (0, 0))      # 第一张贴在左边 (0,0)
     new_img.paste(img_right, (w1, 0))    # 第二张贴在右边 (w1, 0)
-    
+
     return new_img
 
 def parse_args():
     parser = argparse.ArgumentParser(description='RefCocoSeg')
-    parser.add_argument('--model_path', 
+    parser.add_argument('--model_path',
         default="Qwen/Qwen3-VL-4B-SAMTok",
         help='hf model path.')
     parser.add_argument(
@@ -316,13 +296,13 @@ def main():
     MT_START_TOKEN = '<|mt_start|>'
     MT_END_TOKEN = '<|mt_end|>'
     MT_CONTEXT_TOKEN = '<|mt_{}|>'
-    
+
     with hydra.initialize(version_base=None, config_path="../../../projects/transformers/vq_sam2/sam2/sam2_configs"):
         sam2_config = SAM2Config(
             cfg_path="sam2.1_hiera_l.yaml",
             ckpt_path="Qwen/sam2.1_hiera_large.pt",
         )
-        
+
         vq_sam2_config = VQ_SAM2Config(
             sam2_config=sam2_config,
             codebook_size=CODEBOOK_SIZE,
@@ -334,7 +314,7 @@ def main():
     state = torch.load(args.vq_sam2_path, map_location="cpu")
     vq_sam2.load_state_dict(state)
     vq_sam2_image_processor = DirectResize(1024)
-    
+
     print("VQ-SAM2 model loaded successfully")
 
     # 读取 denseworld 数据集
@@ -342,15 +322,15 @@ def main():
     print(f"Loading dataset from: {denseworld_path}")
     with open(denseworld_path, 'r') as f:
         denseworld_data = json.load(f)
-    
+
     print(f"Total samples: {len(denseworld_data)}")
-    
+
     # 只取前422000个样本
     # num_samples = len(denseworld_data)
     num_samples = 5
     denseworld_data = denseworld_data[:num_samples]
     print(f"Using first {num_samples} samples")
-    
+
     # Step 1: 预处理，提取所有 (image_path, [mask_2d_list]) 对
     print("Step 1: Extracting all image-mask pairs...")
     all_samples = []  # [(image_path, [mask_2d_1, mask_2d_2, ...]), ...]
@@ -360,16 +340,16 @@ def main():
             image_path, mask_list = future.result()
             if len(mask_list) > 0:
                 all_samples.append((image_path, mask_list))
-    
+
     print(f"Total images with masks: {len(all_samples)}")
     total_masks = sum(len(masks) for _, masks in all_samples)
     print(f"Total masks: {total_masks}")
-    
+
     # Step 2: 多线程加载图像（去重，每个 image_path 只加载一次）
     print("Step 2: Loading images in parallel...")
-    unique_image_paths = list(set([p[0] for p in all_samples]))
+    unique_image_paths = list({p[0] for p in all_samples})
     image_cache = {}
-    
+
     load_tasks = [(i, path) for i, path in enumerate(unique_image_paths)]
     with ThreadPoolExecutor(max_workers=args.num_workers) as executor:
         futures = {executor.submit(load_image_worker, task): task for task in load_tasks}
@@ -378,31 +358,31 @@ def main():
             if image is not None:
                 path = unique_image_paths[idx]
                 image_cache[path] = (image, ori_width, ori_height)
-    
+
     print(f"Loaded {len(image_cache)} unique images")
-    
+
     # Step 3: 处理每张图像的所有 masks（每个 mask 生成一个独立样本）
     print("Step 3: Processing masks and generating samples...")
     data_list = []
     small_object_count = 0
     crop_save_dir = "rl_dataset/denseworld_crops"
     os.makedirs(crop_save_dir, exist_ok=True)
-    
+
     # 收集需要保存的裁剪图像
     crops_to_save = []  # [(save_path, image), ...]
-    
+
     for image_path, all_mask_2d in tqdm(all_samples, desc="Processing images"):
         if image_path not in image_cache:
             continue
-            
+
         image, ori_width, ori_height = image_cache[image_path]
-        
+
         # 准备图像用于VQ-SAM2（只处理一次）
         sam2_image = np.array(image)
         sam2_image = vq_sam2_image_processor.apply_image(sam2_image)
         sam2_pixel_values = torch.from_numpy(sam2_image).permute(2, 0, 1).contiguous()
         sam2_pixel_values = sam2_pixel_values.unsqueeze(0).to(vq_sam2.dtype).to(vq_sam2.device)
-        
+
         # 对每个 mask 生成一个独立的样本
         for mask_idx, mask_2d in enumerate(all_mask_2d):
             try:
@@ -410,11 +390,11 @@ def main():
                 codes = parse_mask_token(mask_2d, CODEBOOK_SIZE)
                 if len(codes) != CODEBOOK_DEPTH:
                     continue
-                
+
                 # 还原原始codes（去除depth offset）
                 original_codes = [codes[i] - i * CODEBOOK_SIZE for i in range(len(codes))]
                 quant_codes = torch.tensor(original_codes, dtype=torch.long).unsqueeze(0).cuda()
-                
+
                 # Decode mask
                 with torch.no_grad():
                     pred_masks = vq_sam2.forward_with_codes(sam2_pixel_values, quant_codes)
@@ -424,15 +404,15 @@ def main():
                     pred_masks = pred_masks[0, 0, :, :].cpu().numpy().astype(np.uint8)
 
                 final_mask = pred_masks
-                
+
                 # 检查 mask 是否为空
                 if final_mask.sum() == 0:
                     continue
-                
+
                 # 当前物体的 zoom-in 信息
                 zoomin_image_path = None
                 zoomin_mask_token = None
-                
+
                 # 计算bbox和面积占比
                 masks_tensor = torch.from_numpy(final_mask).unsqueeze(0)
                 boxes = torchvision.ops.masks_to_boxes(masks_tensor)
@@ -442,11 +422,11 @@ def main():
                 boxes_area = boxes_h * boxes_w
                 image_area = ori_height * ori_width
                 boxes_occupied_ratio = boxes_area / image_area
-                
+
                 # 判断是否需要zoom-in（面积占比小于30%）
                 if boxes_occupied_ratio < 0.3:
                     small_object_count += 1
-                    
+
                     # 扩展bbox，确保不小于140像素
                     bbox_w = x2 - x1
                     bbox_h = y2 - y1
@@ -460,11 +440,11 @@ def main():
                     x2 = int(min(ori_width, x2))
                     y1 = int(max(0, y1))
                     y2 = int(min(ori_height, y2))
-                    
+
                     # Crop图像
                     cropped_image = image.crop((x1, y1, x2, y2))
                     crop_width, crop_height = cropped_image.size
-                    
+
                     # 如果crop太小，需要resize
                     if crop_width > crop_height and crop_width < 280:
                         ratio = 280 / crop_height
@@ -484,29 +464,29 @@ def main():
                     else:
                         new_height = new_width = None
                         resized_crop_image = None
-                    
+
                     # 为crop图像计算新的mask token
                     if resized_crop_image is None:
                         cropped_sam2_image = np.array(cropped_image)
                     else:
                         cropped_sam2_image = np.array(resized_crop_image)
-                        
+
                     cropped_sam2_image = vq_sam2_image_processor.apply_image(cropped_sam2_image)
                     cropped_sam2_pixel_values = torch.from_numpy(cropped_sam2_image).permute(2, 0, 1).contiguous()
                     cropped_sam2_pixel_values = cropped_sam2_pixel_values.unsqueeze(0).to(vq_sam2.dtype).to(vq_sam2.device)
-                    
+
                     # Crop mask
                     cropped_mask = final_mask[y1:y2, x1:x2]
                     cropped_mask_tensor = torch.from_numpy(np.ascontiguousarray(cropped_mask))
-                    
+
                     if resized_crop_image is not None:
                         cropped_mask_tensor = torch.nn.functional.interpolate(
                             cropped_mask_tensor.unsqueeze(0).unsqueeze(0).float(),
-                            size=(new_height, new_width), 
+                            size=(new_height, new_width),
                             mode='bilinear'
                         )
                         cropped_mask_tensor = (cropped_mask_tensor[0, 0] > 0.5)
-                        
+
                     crop_height_final, crop_width_final = cropped_mask_tensor.shape[-2:]
                     cropped_mask_for_box = cropped_mask_tensor.unsqueeze(0)
                     cropped_box = torchvision.ops.masks_to_boxes(cropped_mask_for_box)
@@ -514,7 +494,7 @@ def main():
                     cropped_box = cropped_box / crop_whwh
                     cropped_box = cropped_box.to(vq_sam2.device)
                     cropped_mask_input = cropped_mask_tensor.unsqueeze(0).to(vq_sam2.device)
-                    
+
                     with torch.no_grad():
                         cropped_vq_sam2_output = vq_sam2(
                             cropped_sam2_pixel_values,
@@ -522,23 +502,23 @@ def main():
                             cropped_box,
                             reconstruct_mask=False,
                         )
-                    
+
                     crop_quant_codes = cropped_vq_sam2_output.quant_codes.squeeze().detach().cpu().numpy().astype(np.int32).tolist()
                     remap_crop_quant_codes = [depth_idx * CODEBOOK_SIZE + quant_code for depth_idx, quant_code in enumerate(crop_quant_codes)]
                     zoom_in_mask_tokens_str = MT_START_TOKEN + ''.join([MT_CONTEXT_TOKEN.format(str(code).zfill(4)) for code in remap_crop_quant_codes]) + MT_END_TOKEN
-                    
+
                     # 保存crop图像路径
                     crop_filename = f"{uuid.uuid4().hex}.jpg"
                     crop_save_path = os.path.join(crop_save_dir, crop_filename)
-                    
+
                     if resized_crop_image is None:
                         crops_to_save.append((crop_save_path, cropped_image.copy()))
                     else:
                         crops_to_save.append((crop_save_path, resized_crop_image.copy()))
-                    
+
                     zoomin_image_path = crop_save_path
                     zoomin_mask_token = zoom_in_mask_tokens_str
-                
+
                 # 为当前 mask 生成一个独立的样本
                 item = build_sample_dict_single_object(
                     image_path=image_path,
@@ -547,26 +527,26 @@ def main():
                     zoomin_mask_token=zoomin_mask_token,
                 )
                 data_list.append(item)
-                    
+
             except Exception as e:
                 print(f"Error processing mask {mask_idx} in {image_path}: {e}")
                 continue
-    
+
     # Step 4: 多线程保存裁剪图像
     print(f"Step 4: Saving {len(crops_to_save)} crop images in parallel...")
     with ThreadPoolExecutor(max_workers=args.num_workers) as executor:
         futures = [executor.submit(save_crop_worker, task) for task in crops_to_save]
         for future in tqdm(as_completed(futures), total=len(futures), desc="Saving crops"):
             future.result()
-    
+
     print(f"Total images processed: {len(all_samples)}")
     print(f"Total masks: {total_masks}")
     print(f"Successfully generated {len(data_list)} samples")
     print(f"Small objects with zoom-in: {small_object_count}")
-    
+
     # 清理图像缓存以释放内存
     image_cache.clear()
-    
+
     # 保存为 parquet 文件
     trainset = Dataset.from_list(data_list)
     num_images_k = len(image_cache) // 1000
@@ -579,4 +559,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    

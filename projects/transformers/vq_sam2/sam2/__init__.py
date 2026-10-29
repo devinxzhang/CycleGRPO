@@ -6,4 +6,5 @@
 
 from hydra import initialize_config_module
 
+
 initialize_config_module("projects.transformers.vq_sam2.sam2.sam2_configs", version_base="1.2")

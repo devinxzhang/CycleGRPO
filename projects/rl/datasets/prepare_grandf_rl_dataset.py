@@ -1,36 +1,21 @@
-import os
-import sys
-import collections
-import os.path as osp
-import random
 import copy
-from typing import Dict, List
-from PIL import Image
+import json
+import os
+import re
+
+import hydra
 import numpy as np
 import torch
 import torchvision
-from pycocotools import mask as mask_utils
-import json
 import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
-import re
-import hydra
-
 from datasets import Dataset, DatasetDict, Sequence
 from datasets import Image as ImageData
+from PIL import Image
+from pycocotools import mask as mask_utils
 
-import mmengine
-from mmengine.dataset import BaseDataset
-
-from xtuner.model.utils import guess_load_checkpoint
-
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from projects.vlm.vq_sam2.models import DirectResize
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.coconut_meta import COCO_META
+from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
 from projects.vlm.qwen2_5_vl_vq_sam2.datasets.gcg_process import glamm_granf_map_fn
+from projects.vlm.vq_sam2.models import DirectResize
 
 
 def decode_mask(object_masks, ori_height, ori_width):
@@ -86,7 +71,7 @@ def main():
             cfg_path="sam2.1_hiera_l.yaml",
             ckpt_path="pretrained_weights/sam2.1_hiera_large.pt",
         )
-        
+
         vq_sam2_config = VQ_SAM2Config(
             sam2_config=sam2_config,
             codebook_size=CODEBOOK_SIZE,
@@ -108,7 +93,7 @@ def main():
         json_data = json.load(f)
 
     shard_items = []
-    
+
     for index in tqdm.tqdm(list(range(len(json_data)))):
         data_dict = copy.deepcopy(json_data[index])
         result_dict = glamm_granf_map_fn(data_dict)
@@ -157,7 +142,7 @@ def main():
 
         question = data_dict['conversation'][0]['input']
         answer = data_dict['conversation'][0]['output']
-        seg_pattern = f'\[SEG\]'
+        seg_pattern = '\[SEG\]'
         seg_matches = list(re.finditer(seg_pattern, answer))
         if len(seg_matches) != len(sam2_tokens_list):
             continue
@@ -183,7 +168,7 @@ def main():
         }
 
         shard_items.append(ret_data_dict)
-    
+
     trainset = Dataset.from_generator(generate_data, gen_kwargs={"conversation_items": shard_items})
     dataset = DatasetDict({"train": trainset}).cast_column("images", Sequence(ImageData()))
     # dataset.push_to_hub("zhouyik/grandf1k")
@@ -192,4 +177,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    

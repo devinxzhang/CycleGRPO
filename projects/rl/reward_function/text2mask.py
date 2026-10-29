@@ -1,17 +1,14 @@
+import json
 import re
-from typing import Any, Tuple, Optional
+from typing import Any, Optional, Tuple
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-import json
-import os
-import random
-import numpy as np
-from PIL import Image
-from collections import Counter
-from pycocotools import mask as mask_utils
 from pycocoevalcap.cider.cider import Cider
+from pycocotools import mask as mask_utils
 from torchvision.transforms.functional import to_pil_image
-from projects.transformers.vq_sam2 import SAM2Config, VQ_SAM2Config, VQ_SAM2
+
 
 _MODEL_CACHE = {'vq_sam2': None, 'sam2_image_processor': None}
 
@@ -180,10 +177,10 @@ def no_target_check(response: str, ground_truth: str) -> float:
     has_mt_start = re.search(r'<\|mt_start\|>', response) is not None
     has_mt_token = re.search(r'<\|mt_\d{4}\|>', response) is not None
     has_mt_end = re.search(r'<\|mt_end\|>', response) is not None
-    
+
     # 如果 response 不包含任何 mask token 相关格式
     no_mask_token = not (has_mt_start or has_mt_token or has_mt_end)
-    
+
     if no_mask_token and ground_truth in response:
         return 1.0
     elif no_mask_token and ground_truth not in response:
@@ -195,21 +192,21 @@ def no_target_check_bbox(response: str, ground_truth: str) -> float:
     检查 response 是否不包含任何 bbox 格式。
     如果 response 不包含 [x1, y1, x2, y2] 格式的 bbox，
     且 ground_truth 在 response 中，则返回 1.0，否则返回 0.0。
-    
+
     Args:
         response: 模型生成的响应字符串
         ground_truth: ground truth 字符串（通常是 "null" 或其他无目标标记）
-    
+
     Returns:
         float: 1.0 表示正确识别无目标，0.2 表示无 bbox 但 gt 不匹配，0.0 表示包含 bbox
     """
     # 检查是否包含 [x1, y1, x2, y2] 格式的 bbox
     bbox_pattern = r'\[\d+,\s*\d+,\s*\d+,\s*\d+\]'
     has_bbox = re.search(bbox_pattern, response) is not None
-    
+
     # 如果 response 不包含任何 bbox 格式
     no_bbox = not has_bbox
-    
+
     if no_bbox and ground_truth in response:
         return 1.0
     elif no_bbox and ground_truth not in response:
@@ -221,10 +218,10 @@ def cap_no_mask_token_check(response: str) -> float:
     has_mt_start = re.search(r'<\|mt_start\|>', response) is not None
     has_mt_token = re.search(r'<\|mt_\d{4}\|>', response) is not None
     has_mt_end = re.search(r'<\|mt_end\|>', response) is not None
-    
+
     # 如果 response 不包含任何 mask token 相关格式
     no_mask_token = not (has_mt_start or has_mt_token or has_mt_end)
-    
+
     if no_mask_token:
         return 1.0
     return 0.0
@@ -233,20 +230,20 @@ def cap_no_bbox_check(response: str) -> float:
     """
     检查 caption response 是否不包含任何 bbox 格式。
     如果 response 不包含 [x1, y1, x2, y2] 格式的 bbox，则返回 1.0，否则返回 0.0。
-    
+
     这是 cap_no_mask_token_check 的 bbox 版本，用于确保 caption 任务的输出
     不会错误地包含 bbox 坐标。
-    
+
     Args:
         response: 模型生成的响应字符串
-    
+
     Returns:
         float: 1.0 表示不包含 bbox（正确），0.0 表示包含 bbox（错误）
     """
     # 检查是否包含 [x1, y1, x2, y2] 格式的 bbox
     bbox_pattern = r'\[\d+,\s*\d+,\s*\d+,\s*\d+\]'
     has_bbox = re.search(bbox_pattern, response) is not None
-    
+
     if not has_bbox:
         return 1.0
     return 0.0
@@ -403,7 +400,7 @@ def timestamp_penalty(caption: str) -> float:
         if re.search(pattern, text, re.IGNORECASE):
             return -1.0
     return 0.0
-    
+
 def extract_think_and_answer_robust(response: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Extracts the content between <think> and <answer> tags from a string,
@@ -411,7 +408,7 @@ def extract_think_and_answer_robust(response: str) -> Tuple[Optional[str], Optio
     Args:
         response (str): The input string, potentially containing <think> and <answer> tags.
     Returns:
-        Tuple[Optional[str], Optional[str]]: 
+        Tuple[Optional[str], Optional[str]]:
             A tuple containing (think_content, answer_content).
             Each element will be a string if found, or None if the corresponding tag is not found.
     """
@@ -431,7 +428,7 @@ def extract_think_and_answer_robust(response: str) -> Tuple[Optional[str], Optio
     answer_match = answer_pattern.search(response)
     if answer_match:
         answer_content = answer_match.group(1) # group(1) gets the content of the first capture group
-    
+
     if answer_content is None or think_content is None:
         if '<answer>' in response:
             head, tail = response.split('<answer>', 1)
@@ -498,7 +495,6 @@ def hungarian_maximize(iou_matrix: torch.Tensor):
       - ious: list of IoU values
     """
     try:
-        import numpy as np
         from scipy.optimize import linear_sum_assignment
         cost = (1.0 - iou_matrix).cpu().numpy()
         row_ind, col_ind = linear_sum_assignment(cost)
@@ -526,7 +522,7 @@ def hungarian_maximize(iou_matrix: torch.Tensor):
             if len(used_rows) == N or len(used_cols) == M:
                 break
         return matches, ious
-    
+
 def bipartite_match_by_mask_iou_half(
     gt_masks: torch.Tensor,
     pred_masks: torch.Tensor,
@@ -558,10 +554,10 @@ def format_reward(response: str) -> float:
 
 def mask_token_format_reward(answer_content: str) -> float:
     """Check if the answer contains valid mask token format.
-    
+
     Args:
         answer_content: The extracted answer content string.
-        
+
     Returns:
         1.0 if at least one valid mask token pattern is found, 0.0 otherwise.
     """
@@ -573,13 +569,13 @@ def mask_token_format_reward(answer_content: str) -> float:
 
 def bbox_format_reward(answer_content: str) -> float:
     """Check if the answer contains valid bbox format.
-    
+
     检查答案中是否包含有效的 bbox 格式 [x1, y1, x2, y2]。
     这是 mask_token_format_reward 的 bbox 版本。
-    
+
     Args:
         answer_content: The extracted answer content string.
-        
+
     Returns:
         1.0 if at least one valid bbox pattern is found, 0.0 otherwise.
     """
@@ -690,7 +686,7 @@ def mask_accuracy_reward(gt_masks: torch.Tensor, pred_masks: torch.Tensor):
         gt_masks = gt_masks.unsqueeze(0)
     if pred_masks.ndim == 2:
         pred_masks = pred_masks.unsqueeze(0)
-    
+
     matches, ious = bipartite_match_by_mask_iou_half(gt_masks, pred_masks)
     denominator = max(len(gt_masks), len(pred_masks))
     return sum(ious) / denominator
@@ -819,7 +815,7 @@ def glamm_gcg_mask_token_accuracy_reward_v2(answer_content: str, ground_truth: s
 def glamm_gcg_phrases_accuracy_reward(answer_content: str, ground_truth: str):
     if answer_content is None:
         return 0.0
-    
+
     _, target_phrases = extract_gcg_patterns(ground_truth)
     _, pred_phrases = extract_gcg_patterns(answer_content)
 
@@ -832,7 +828,7 @@ def glamm_gcg_phrases_accuracy_reward(answer_content: str, ground_truth: str):
         if pred_phrase in target_phrases:
             recall_N += 1
     return recall_N / max_N
-            
+
 def psg_accuracy_reward(answer_content: str, ground_truth: str):
     pred_triplets, pred_text_triplets = extract_scene_graph_dicts(answer_content)
     gt_triplets, gt_text_triplets = extract_scene_graph_dicts(ground_truth)
@@ -856,7 +852,7 @@ def psg_accuracy_reward(answer_content: str, ground_truth: str):
             pred_obj_label = pred_triplet['object']['label']
             pred_sub_mask_2d = pred_triplet['subject']['mask_2d']
             pred_obj_mask_2d = pred_triplet['object']['mask_2d']
-        except:
+        except (KeyError, TypeError):
             continue
         max_score = 0.0
         for gt_triplet in gt_triplets:
@@ -866,7 +862,7 @@ def psg_accuracy_reward(answer_content: str, ground_truth: str):
                 gt_obj_label = gt_triplet['object']['label']
                 gt_sub_mask_2d = gt_triplet['subject']['mask_2d']
                 gt_obj_mask_2d = gt_triplet['object']['mask_2d']
-            except:
+            except (KeyError, TypeError):
                 continue
 
             match_score = 0.0
@@ -938,7 +934,7 @@ SCORER_CIDER = Cider()
 def compute_semantic_alignment_reward(answer_content: str, gt_cap: str, weight: float = 1.0) -> torch.Tensor:
     """
     针对已提取答案的单条字符串进行语义奖励计算
-    
+
     Args:
         answer_content: 已解析出的 <answer> 文本内容
         gt_cap: Ground Truth 描述字符串
@@ -947,11 +943,11 @@ def compute_semantic_alignment_reward(answer_content: str, gt_cap: str, weight: 
     # 鲁棒性处理：确保输入是字符串且非空
     ans_str = str(answer_content).strip() if answer_content else ""
     gt_str = str(gt_cap).strip() if gt_cap else ""
-    
+
     # 即使是单条，也必须满足 pycocoevalcap 的 dict(list) 格式要求
     res_dict = {0: [ans_str]}
     gts_dict = {0: [gt_str]}
-    
+
     try:
         # compute_score 返回：(平均分, 各样本分列表)
         _, scores = SCORER_CIDER.compute_score(gts_dict, res_dict)
@@ -960,14 +956,14 @@ def compute_semantic_alignment_reward(answer_content: str, gt_cap: str, weight: 
     except Exception:
         # 预防计算异常（如词典库未对齐等极端情况）
         score = 0.0
-        
+
     # 返回 Scalar Tensor
     return (torch.tensor(score, dtype=torch.float32) * weight).item()
 
 def gm_non_repeat_reward(text: str) -> float:
     """
     针对单条文本输入的 3-gram 重复检查奖励
-    
+
     Args:
         text: 模型生成的描述字符串
     Returns:
@@ -977,22 +973,22 @@ def gm_non_repeat_reward(text: str) -> float:
     text = str(text).lower()
     clean_text = re.sub(r'[^\w\s]', ' ', text) # 将标点替换为空格，避免单词粘连
     words = clean_text.split()
-    
+
     # 2. 长度校验：不足 3 个词无法构成 triplet
     if len(words) < 3:
         # 在 Region Captioning 中，太短通常意味着信息量不足
         # 但从“非重复”角度看，它是合格的。这里我们遵循你原有的逻辑或给 1.0
-        return 1.0 
-        
+        return 1.0
+
     # 3. 生成 3-gram (Triplets) 列表
     # 使用滑动窗口：[w1, w2, w3], [w2, w3, w4] ...
     text_triplets = [" ".join(words[i:i+3]) for i in range(len(words)-2)]
-    
+
     # 4. 统计频率
     triplet_dict = {}
     for triplet in text_triplets:
         triplet_dict[triplet] = triplet_dict.get(triplet, 0) + 1
-    
+
     # 5. 判定标准：任何三元组出现超过 2 次则判定为重复
     # 例如："on the left ... on the left ... on the left" 触发 0 分
     if len(triplet_dict) > 0 and max(triplet_dict.values()) > 2:
@@ -1003,7 +999,7 @@ def gm_non_repeat_reward(text: str) -> float:
 def mask_iou_reward(pred_masks: np.ndarray, gt_masks: list[str], eps=1e-6):
     if pred_masks is None:
         return 0.0
-    
+
     gt_mask_ori = mask_utils.decode(gt_masks)
     gt_mask_ori = gt_mask_ori > 0.5
 
@@ -1014,9 +1010,9 @@ def mask_iou_reward(pred_masks: np.ndarray, gt_masks: list[str], eps=1e-6):
     union        = np.logical_or(pred, gt).sum()
 
     return intersection / (union + eps)
-    
 
-def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.1, task: str = 'caption') -> list[dict[str, float]]: 
+
+def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.1, task: str = 'caption') -> list[dict[str, float]]:
 
     scores = []
     if task == 'caption':
@@ -1100,8 +1096,8 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
                 #         break
                 #     else:
                 #         print(f' [ERROR] judgement format invalid: {judgement}')
-                #         continue                
-                
+                #         continue
+
                 scores.append(
                     {
                         "cap_overall": accuracy_score + phrase_score + no_repeat_score,
@@ -1210,7 +1206,7 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
                 regex_pattern = r"<\|mt_start\|><\|mt_\d{4}\|><\|mt_\d{4}\|><\|mt_end\|>"
                 pred_mask_tokens = re.findall(regex_pattern, reward_input["response"])
                 format_score = int(len(pred_mask_tokens) > 0)
-                iou_scores = mask_token_accuracy_reward(reward_input["response"], reward_input['seg_ground_truth'])    
+                iou_scores = mask_token_accuracy_reward(reward_input["response"], reward_input['seg_ground_truth'])
                 scores.append(
                     {
                         "cap_overall":  format_score + iou_scores,
@@ -1253,7 +1249,7 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
                 # gt_think_content, gt_answer_content = extract_think_and_answer_robust(reward_input["ground_truth"])
                 # semantic_alignment_score = compute_semantic_alignment_reward(response_answer_content, gt_answer_content)
                 # think_content_no_repeat_score = gm_non_repeat_reward(response_think_content)
-                
+
                 answer_content_no_repeat_score = gm_non_repeat_reward(reward_input["response"])
                 # cap_no_mask_token_check_score = cap_no_mask_token_check(reward_input["response"])
                 cap_no_bbox_no_chinese_score = cap_no_bbox_no_chinese_check(reward_input["response"])
@@ -1282,7 +1278,6 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
         # reward_inputs[0]['source']: 'groundingme'
         # reward_inputs[0]['task']: 'segmentation'
         # 'response', 'response_length', 'source', 'task', 'iou_scores', 'mask_token_accuracy']
-        from projects.rl.reward_function.tg_reward import tg_reward
         for reward_input in reward_inputs:
             source = reward_input["source"]
             if source in ['tg_multi_merged']:
@@ -1323,10 +1318,10 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
                 # _, answer_content = extract_think_and_answer_robust(reward_input["response"])
                 iou_score = reward_input["mask_token_accuracy"] * reward_input["iou_scores"]
                 # think_content_no_repeat_score = non_repeat_reward(think_content)
-                
+
                 answer_content_no_repeat_score = non_repeat_reward(reward_input["response"])
                 mask_token_format_correct = mask_token_format_reward(reward_input["response"])
-                
+
                 # answer_content_no_repeat_score = non_repeat_reward(reward_input["response"])
                 # mask_token_format_correct = bbox_format_reward(reward_input["response"])
                 scores.append(
@@ -1338,7 +1333,7 @@ def compute_score(reward_inputs: list[dict[str, Any]], format_weight: float = 0.
                         "seg_mask_token_format_correct": mask_token_format_correct,
                     }
                 )
-            else: 
+            else:
                 raise NotImplementedError
     return scores
 

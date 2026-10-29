@@ -1,35 +1,14 @@
-import os
-import sys
-import collections
-import os.path as osp
-import random
 import copy
-from typing import Dict, List
-from PIL import Image
-import numpy as np
-import torch
-import torchvision
-from pycocotools import mask as mask_utils
 import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
+import os
+import random
 import re
 
+import numpy as np
 from datasets import Dataset, DatasetDict, Sequence
 from datasets import Image as ImageData
-
-import mmengine
-from mmengine.dataset import BaseDataset
-
-from xtuner.model.utils import guess_load_checkpoint
-
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from projects.vlm.vq_sam2.models import DirectResize
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.coconut_meta import COCO_META
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.gcg_process import glamm_granf_map_fn
+from PIL import Image
+from pycocotools import mask as mask_utils
 
 
 def decode_mask(object_masks, ori_height, ori_width):
@@ -88,28 +67,28 @@ def main():
     ric_ann_file = "./data/tokenmask_data_256x2_cot_format/mask_generation_padt_ric561k.json"
     with open(ric_ann_file, 'r') as f:
         json_data = json.load(f)
-    
+
     shard_items = []
     image_ric_dict = {}
     for item in json_data:
         if item['image'] not in image_ric_dict:
             image_ric_dict[item['image']] = []
         image_ric_dict[item['image']].append(item)
-    
+
     select_items = []
     for image_path, item_list in image_ric_dict.items():
         item = random.choice(item_list)
         select_items.append(item)
 
     random.shuffle(select_items)
-    
+
     shard_items = []
     # for data_dict in select_items[:40000]:
     for data_dict in select_items[:200]:
         ret_data_dict = copy.deepcopy(data_dict)
         ret_data_dict.update({'source': 'padt_gcg', 'segmentations': []})
         shard_items.append(ret_data_dict)
-    
+
     trainset = Dataset.from_generator(generate_data, gen_kwargs={"conversation_items": shard_items})
     dataset = DatasetDict({"train": trainset}).cast_column("images", Sequence(ImageData()))
     # dataset.push_to_hub("zhouyik/grandf1k")
@@ -119,4 +98,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    

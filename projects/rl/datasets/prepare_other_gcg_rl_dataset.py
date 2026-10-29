@@ -1,35 +1,13 @@
-import os
-import sys
-import collections
-import os.path as osp
-import random
-import copy
-from typing import Dict, List
-from PIL import Image
-import numpy as np
-import torch
-import torchvision
-from pycocotools import mask as mask_utils
 import json
-import tqdm
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
-import io
+import os
+import random
 import re
 
+import numpy as np
 from datasets import Dataset, DatasetDict, Sequence
 from datasets import Image as ImageData
-
-import mmengine
-from mmengine.dataset import BaseDataset
-
-from xtuner.model.utils import guess_load_checkpoint
-
-from projects.transformers.vq_sam2 import VQ_SAM2, VQ_SAM2Config, SAM2Config
-from projects.vlm.vq_sam2.models import DirectResize
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.coconut_meta import COCO_META
-from projects.vlm.qwen2_5_vl_vq_sam2.datasets.gcg_process import glamm_granf_map_fn
+from PIL import Image
+from pycocotools import mask as mask_utils
 
 
 def decode_mask(object_masks, ori_height, ori_width):
@@ -90,7 +68,7 @@ def main():
         json_data = json.load(f)
 
     random.shuffle(json_data)
-    
+
     shard_items = []
     for data_dict in json_data[:40000]:
         # ret_data_dict = copy.deepcopy(data_dict)
@@ -109,7 +87,7 @@ def main():
             'source': 'glamm_gcg',
         }
         shard_items.append(ret_data_dict)
-    
+
     trainset = Dataset.from_generator(generate_data, gen_kwargs={"conversation_items": shard_items})
     dataset = DatasetDict({"train": trainset}).cast_column("images", Sequence(ImageData()))
     # dataset.push_to_hub("zhouyik/grandf1k")
@@ -118,4 +96,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    

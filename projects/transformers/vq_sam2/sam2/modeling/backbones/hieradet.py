@@ -13,13 +13,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from iopath.common.file_io import g_pathmgr
 
+from ..sam2_utils import MLP, DropPath
 from .utils import (
     PatchEmbed,
     window_partition,
     window_unpartition,
 )
-
-from ..sam2_utils import DropPath, MLP
 
 
 def do_pool(x: torch.Tensor, pool: nn.Module, norm: nn.Module = None) -> torch.Tensor:

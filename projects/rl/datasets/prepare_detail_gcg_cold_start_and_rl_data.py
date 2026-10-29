@@ -1,10 +1,12 @@
-import os
-import json
-import tqdm
-import random
-from openai import OpenAI
 import base64
+import json
+import os
+import random
 import re
+
+import tqdm
+from openai import OpenAI
+
 
 def split_list_random(lst, k=4000, seed=None):
     """
@@ -50,7 +52,7 @@ def clean_up():
                 skip_this_case = True
         else:
             skip_this_case = True
-        
+
         if skip_this_case:
             continue
 
@@ -67,10 +69,10 @@ def clean_up():
             'conversations': conversations,
         }
         all_cold_start_data.append(ret_data_dict)
-    
+
     with open(f'./cold_start_data/coconut_dw_cold_start_data{len(all_cold_start_data)//1000}k.json', 'w') as f:
         json.dump(all_cold_start_data, f, indent=4)
-    
+
     print(f"{len(all_cold_start_data)} items")
 
 def load_dataset():
@@ -82,7 +84,7 @@ def load_dataset():
         '<image>\nCould you give me a detail explanation of this picture? Please respond with interleaved segmentation masks for the corresponding phrases.',
         '<image>\nCould you provide me with a detail analysis of this photo? Please output with interleaved segmentation masks for the corresponding parts of the answer.',
     ]
-        
+
     with open('./data/coconut_dw_source.json', 'r') as f:
         source_items = json.load(f)
 
@@ -98,7 +100,7 @@ def load_dataset():
         mask_id_2_mask_token = {}
         for mask_id, mask_anno in mask_annotation.items():
             mask_id_2_mask_token[f'<obj_{mask_id}>'] = mask_anno['mask_token']
-        
+
         for mask_id, mask_token in mask_id_2_mask_token.items():
             image_caption = image_caption.replace(mask_id, mask_token)
 
@@ -111,10 +113,10 @@ def load_dataset():
             'conversations': conversation,
         }
         cold_start_items.append(ret_data_dict)
-    
+
     with open('./cold_start_data/detail_gcg_cold_start_source.json', 'w') as f:
         json.dump(cold_start_items, f, indent=4)
-    
+
     with open('./cold_start_data/detail_gcg_rl_source.json', 'w') as f:
         json.dump(rl_subset, f, indent=4)
 
