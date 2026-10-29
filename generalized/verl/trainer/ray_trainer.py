@@ -575,7 +575,11 @@ class RayPPOTrainer:
 
     def _save_checkpoint(self) -> None:
         # path: {save_checkpoint_path}/global_step_{global_step}/{actor,critic}
-        if self.val_reward_score > self.best_val_reward_score:
+        # Without validation every step scores 0.0, so the first one would be
+        # pinned as "best" and kept forever -- one checkpoint more than
+        # trainer.save_limit allows, for a score that means nothing.
+        validation_enabled = self.val_dataloader is not None and self.config.trainer.val_freq > 0
+        if validation_enabled and self.val_reward_score > self.best_val_reward_score:
             self.best_val_reward_score = self.val_reward_score
             self.best_global_step = self.global_step
 
