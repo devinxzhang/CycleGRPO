@@ -213,11 +213,11 @@ def parse_args():
 
 
 def load_image_with_retry(path, retries=6, base_delay=0.5):
-    """Open an image, retrying transient NAS I/O failures with backoff.
+    """Open an image, retrying transient I/O failures with backoff.
 
-    The coco images live on a slow NAS; under N concurrent shards Image.open can
-    raise transient I/O errors. Retrying (instead of silently skipping) avoids
-    dropping thousands of valid samples. Raises the last error if all retries fail.
+    With several shards reading the image directory at once, Image.open can fail
+    transiently. Retrying (instead of silently skipping) avoids dropping
+    thousands of valid samples. Raises the last error if all retries fail.
     """
     last = None
     for i in range(retries):
