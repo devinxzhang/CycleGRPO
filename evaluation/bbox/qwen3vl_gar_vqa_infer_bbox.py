@@ -1,6 +1,7 @@
 import argparse
 import copy
 import os
+import sys
 import torch
 import torchvision
 import tqdm
@@ -13,11 +14,20 @@ import base64
 
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from input_checks import require_inputs  # noqa: E402
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='GAR VQA with BBox')
     parser.add_argument('model_path', help='hf model path.')
     parser.add_argument('--output', help='output file name')
+    parser.add_argument(
+        '--gar_bench_root',
+        default=os.environ.get('GAR_BENCH_ROOT'),
+        help='GAR-Bench annotations directory with the JSON files and images/ (env: GAR_BENCH_ROOT).')
+    parser.add_argument('--check_only', '--check-only', action='store_true',
+                        help='Validate input paths and exit without loading the model.')
     args = parser.parse_args()
     return args
 
@@ -75,6 +85,14 @@ def mask_to_normalized_bbox(mask, normalized_scale=1000):
 
 def main():
     args = parse_args()
+    ann_path = os.path.join(args.gar_bench_root or '', 'GAR-Bench-VQA.json')
+    require_inputs([
+        ('--gar_bench_root (or GAR_BENCH_ROOT)', args.gar_bench_root, 'dir'),
+        ('GAR-Bench-VQA.json', ann_path, 'file'),
+    ])
+    if args.check_only:
+        print('GAR VQA bbox inputs OK')
+        return
 
     # build qwen3vl model
     model = Qwen3VLForConditionalGeneration.from_pretrained(
@@ -83,13 +101,13 @@ def main():
 
     processor = AutoProcessor.from_pretrained(args.model_path)
 
-    with open('<PATH_TO_GAR_BENCH>/GAR-Bench-VQA.json', 'r') as f:
+    with open(ann_path, 'r') as f:
         eval_samples = json.load(f)
     
     all_items = []
     for eval_sample in tqdm.tqdm(eval_samples):
         image_file = eval_sample['image']
-        image_path = os.path.join('<PATH_TO_GAR_BENCH>/', image_file)
+        image_path = os.path.join(args.gar_bench_root, image_file)
         seg = []
         for mask_idx, mask_rle in enumerate(eval_sample["mask_rles"]):
             seg.append(mask_rle)

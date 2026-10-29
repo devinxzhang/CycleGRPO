@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import torch
 import torchvision
 import tqdm
@@ -8,6 +9,9 @@ from PIL import Image
 import json
 
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from input_checks import require_inputs  # noqa: E402
 
 
 def parse_args():
@@ -24,6 +28,13 @@ def parse_args():
         '--dataset',
         default='./data/GroundingSuiteEval/GroundingSuite-Eval.jsonl',
         help='Specify a ref dataset')
+    parser.add_argument(
+        '--image_root',
+        default=None,
+        help='Directory containing the image_path entries (unlabeled2017/...). '
+             'Default: the directory of --dataset.')
+    parser.add_argument('--check_only', '--check-only', action='store_true',
+                        help='Validate input paths and exit without loading the model.')
     parser.add_argument('--task_id', '--task-id', type=int, default=0)
     parser.add_argument('--num_tasks', '--num-tasks', type=int, default=1)
     args = parser.parse_args()
@@ -82,6 +93,15 @@ def bbox_to_pixel_coords(bbox, height, width, normalized_scale=1000):
 
 def main():
     args = parse_args()
+    if args.image_root is None:
+        args.image_root = os.path.dirname(os.path.abspath(args.dataset))
+    require_inputs([
+        ('--dataset', args.dataset, 'file'),
+        ('--image_root', args.image_root, 'dir'),
+    ])
+    if args.check_only:
+        print('GroundingSuite bbox inputs OK')
+        return
 
     model = Qwen3VLForConditionalGeneration.from_pretrained(
         args.model_path, torch_dtype="auto"
@@ -117,10 +137,9 @@ Provide the bounding box in the format [x1, y1, x2, y2] where coordinates are no
         caption = data_dict['caption']
         class_id = data_dict['class_id']
 
-        image_path = os.path.join('./data/GroundingSuiteEval', image_file)
-        # Replace path for coco images
-        image_path = image_path.replace('./data/ref_seg/grefs/coco2014/train2014', '<PATH_TO_COCO2014>/train2014')
-    
+        image_path = os.path.join(args.image_root, image_file)
+
+
         image = Image.open(image_path).convert('RGB')
         ori_width, ori_height = image.size
 
