@@ -2,16 +2,53 @@
 
 # CycleGRPO
 
-**The actor is its own critic: closing the caption ↔ grounding loop for fine-grained multimodal understanding.**
+**The actor is its own critic — closing the caption ↔ grounding loop<br>for fine-grained multimodal understanding.**
 
-Official implementation, checkpoints and training data for CycleGRPO (ECCV 2026)
-and its extension to video, Generalized CycleGRPO.
+Official implementation, checkpoints and training data for **CycleGRPO** (ECCV 2026)
+and **Generalized CycleGRPO**, its extension to video.
 
-<a href="https://arxiv.org/abs/2607.11581"><img src="https://img.shields.io/badge/CycleGRPO-arXiv%202607.11581-b31b1b?logo=arxiv&logoColor=white" alt="CycleGRPO arXiv"></a>
-<a href="https://arxiv.org/abs/2610.29552"><img src="https://img.shields.io/badge/Generalized-arXiv%202610.29552-b31b1b?logo=arxiv&logoColor=white" alt="Generalized CycleGRPO arXiv"></a>
-<a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Pages-blue?logo=googlechrome&logoColor=white" alt="Project pages"></a>
-<a href="https://huggingface.co/XinNUS"><img src="https://img.shields.io/badge/%F0%9F%A4%97-Models%20%26%20Data-FFD21E" alt="Hugging Face"></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-green" alt="License"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-3da639?style=flat-square" alt="License: Apache 2.0"></a>
+<img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11">
+<img src="https://img.shields.io/badge/PyTorch-2.8.0-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch 2.8.0">
+<img src="https://img.shields.io/badge/CUDA-12.8-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="CUDA 12.8">
+
+</div>
+
+<br>
+
+<div align="center">
+
+### CycleGRPO &nbsp;·&nbsp; ECCV 2026
+
+**Actor as Its Own Critic:<br>Unifying Region Understanding and Localization via CycleGRPO**
+
+<a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-1a73e8?style=flat-square&logo=googlechrome&logoColor=white" alt="CycleGRPO project page"></a>
+<a href="https://arxiv.org/abs/2607.11581"><img src="https://img.shields.io/badge/arXiv-2607.11581-b31b1b?style=flat-square&logo=arxiv&logoColor=white" alt="CycleGRPO arXiv"></a>
+<a href="https://arxiv.org/pdf/2607.11581"><img src="https://img.shields.io/badge/Paper-PDF-D83B01?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="CycleGRPO paper PDF"></a>
+<a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-5B2C8D?style=flat-square" alt="ECCV 2026"></a>
+<br>
+<a href="https://huggingface.co/XinNUS/CycleGRPO-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-CycleGRPO--4B-FFD21E?style=flat-square" alt="CycleGRPO-4B model"></a>
+<a href="https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Data-CycleGRPO--RL--Data-FFD21E?style=flat-square" alt="CycleGRPO RL data"></a>
+<a href="https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Init-Qwen3--VL--4B--SAMTok--co-FFD21E?style=flat-square" alt="Co-SFT initialization"></a>
+
+</div>
+
+<div align="center">
+
+### Generalized CycleGRPO &nbsp;·&nbsp; arXiv preprint
+
+**Generalized CycleGRPO for<br>Fine-Grained Multimodal Understanding and Grounding**
+
+<a href="https://devinxzhang.github.io/Generalized-CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-1a73e8?style=flat-square&logo=googlechrome&logoColor=white" alt="Generalized CycleGRPO project page"></a>
+<a href="https://arxiv.org/abs/2610.29552"><img src="https://img.shields.io/badge/arXiv-2610.29552-b31b1b?style=flat-square&logo=arxiv&logoColor=white" alt="Generalized CycleGRPO arXiv"></a>
+<a href="https://arxiv.org/pdf/2610.29552"><img src="https://img.shields.io/badge/Paper-PDF-D83B01?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="Generalized CycleGRPO paper PDF"></a>
+<br>
+<a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-Temporal--4B-FFD21E?style=flat-square" alt="Generalized CycleGRPO Temporal 4B"></a>
+<a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-Temporal--OMTG--4B-FFD21E?style=flat-square" alt="Generalized CycleGRPO Temporal OMTG 4B"></a>
+<a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-SpatioTemporal--4B-FFD21E?style=flat-square" alt="Generalized CycleGRPO SpatioTemporal 4B"></a>
+<br>
+<a href="https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1"><img src="https://img.shields.io/badge/Training%20Data-v1-2da44e?style=flat-square&logo=github&logoColor=white" alt="Generalized CycleGRPO training annotations v1"></a>
+<a href="https://huggingface.co/datasets/XinNUS/DOVE-Bench"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Benchmark-DOVE--Bench-FFD21E?style=flat-square" alt="DOVE-Bench"></a>
 
 </div>
 
@@ -32,35 +69,26 @@ the actor supplies its own critic signal.
 **Generalized CycleGRPO** carries the same region → text → region cycle into video,
 over temporal intervals and timestamped spatial evidence.
 
-## Releases
-
-| | Paper | Venue |
-|---|---|---|
-| **CycleGRPO** — images, spatial | [Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO](https://arxiv.org/abs/2607.11581) | ECCV 2026 |
-| **Generalized CycleGRPO** — images + video | [Generalized CycleGRPO for Fine-Grained Multimodal Understanding and Grounding](https://arxiv.org/abs/2610.29552) | arXiv preprint |
-
 ## Model and data zoo
 
-**Models**
+**Models** — all are final inference checkpoints; RL training starts from the
+co-SFT initialization below, not from these.
 
-| Model | Task | Link |
+| Model | Release | Task |
 |---|---|---|
-| `CycleGRPO-4B` | Spatial: region captioning + localization | [🤗](https://huggingface.co/XinNUS/CycleGRPO-4B) |
-| `Generalized-CycleGRPO-Temporal-4B` | Temporal (Qwen route): captioning + grounding | [🤗](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B) |
-| `Generalized-CycleGRPO-Temporal-OMTG-4B` | Temporal (OMTG route): grounding | [🤗](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B) |
-| `Generalized-CycleGRPO-SpatioTemporal-4B` | Spatio-temporal (Open-o3 route) | [🤗](https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B) |
-
-These are final inference models. RL training starts from the co-SFT
-initialization below, not from these.
+| [`CycleGRPO-4B`](https://huggingface.co/XinNUS/CycleGRPO-4B) | ECCV 2026 | Spatial: region captioning + localization |
+| [`Generalized-CycleGRPO-Temporal-4B`](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B) | Generalized | Temporal, Qwen route: captioning + grounding |
+| [`Generalized-CycleGRPO-Temporal-OMTG-4B`](https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B) | Generalized | Temporal, OMTG route: grounding |
+| [`Generalized-CycleGRPO-SpatioTemporal-4B`](https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B) | Generalized | Spatio-temporal, Open-o3 route |
 
 **Data and initialization**
 
-| Resource | Contents | Link |
+| Resource | Release | Contents |
 |---|---|---|
-| `Qwen3-VL-4B-SAMTok-co` | Co-SFT init that spatial RL starts from | [🤗](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co) |
-| `CycleGRPO-RL-Data` | 19,655 DenseWorld region + 1,000 GRES no-target samples, with zoom-in crops | [🤗](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data) |
-| Generalized annotations v1 | 73,364 RL rows across 3 profiles + 21,443 co-SFT conversations | [Release](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1) |
-| `DOVE-Bench` | Evaluation benchmark | [🤗](https://huggingface.co/datasets/XinNUS/DOVE-Bench) |
+| [`Qwen3-VL-4B-SAMTok-co`](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co) | ECCV 2026 | Co-SFT init that spatial RL starts from |
+| [`CycleGRPO-RL-Data`](https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data) | ECCV 2026 | 19,655 DenseWorld region + 1,000 GRES no-target samples, with zoom-in crops |
+| [Training annotations v1](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1) | Generalized | 73,364 RL rows across 3 profiles + 21,443 co-SFT conversations |
+| [`DOVE-Bench`](https://huggingface.co/datasets/XinNUS/DOVE-Bench) | Generalized | Evaluation benchmark |
 
 ## Contents
 
