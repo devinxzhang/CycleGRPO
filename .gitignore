@@ -10,3 +10,11 @@ rl_dataset/
 wandb/
 verl_wandb_logs/
 *.egg-info/
+
+# OS / editor cruft
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
