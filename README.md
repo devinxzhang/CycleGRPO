@@ -1,13 +1,45 @@
 # CycleGRPO and Generalized CycleGRPO
 
+Official implementations, model checkpoints and training annotations for
+**CycleGRPO (ECCV 2026)** and **Generalized CycleGRPO**, its extension to
+spatial, temporal and spatio-temporal understanding and grounding.
+
+## Papers and resources
+
+### Generalized CycleGRPO
+
+**Generalized CycleGRPO for Fine-Grained Multimodal Understanding and Grounding**
+
 <p align="center">
-  <a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Project Page"></a>
-  <a href="https://arxiv.org/pdf/2607.11581"><img src="https://img.shields.io/badge/Paper-PDF-red?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Paper"></a>
-  <a href="https://arxiv.org/abs/2607.11581"><img src="https://img.shields.io/badge/arXiv-2607.11581-b31b1b?style=for-the-badge&logo=arxiv&logoColor=white" alt="arXiv"></a>
-  <a href="https://huggingface.co/XinNUS/CycleGRPO-4B"><img src="https://img.shields.io/badge/HuggingFace-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Models"></a>
-  <a href="https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data"><img src="https://img.shields.io/badge/HuggingFace-RL%20Data-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="RL Data"></a>
+  <a href="https://devinxzhang.github.io/Generalized-CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Generalized CycleGRPO project page"></a>
+  <a href="https://arxiv.org/pdf/2610.29552"><img src="https://img.shields.io/badge/Paper-PDF-red?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Generalized CycleGRPO paper PDF"></a>
+  <a href="https://arxiv.org/abs/2610.29552"><img src="https://img.shields.io/badge/arXiv-2610.29552-b31b1b?style=for-the-badge&logo=arxiv&logoColor=white" alt="Generalized CycleGRPO arXiv"></a>
+  <a href="https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1"><img src="https://img.shields.io/badge/Training-Data-2da44e?style=for-the-badge&logo=github&logoColor=white" alt="Generalized CycleGRPO training annotations"></a>
+  <a href="https://huggingface.co/datasets/XinNUS/DOVE-Bench"><img src="https://img.shields.io/badge/Benchmark-DOVE-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="DOVE benchmark"></a>
+</p>
+<p align="center">
+  <a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B"><img src="https://img.shields.io/badge/Model-Temporal%204B-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Generalized CycleGRPO Temporal 4B model"></a>
+  <a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B"><img src="https://img.shields.io/badge/Model-Temporal%20OMTG%204B-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Generalized CycleGRPO Temporal OMTG 4B model"></a>
+  <a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B"><img src="https://img.shields.io/badge/Model-SpatioTemporal%204B-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Generalized CycleGRPO SpatioTemporal 4B model"></a>
+</p>
+
+### CycleGRPO · ECCV 2026
+
+**Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO**
+
+<p align="center">
+  <a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="CycleGRPO project page"></a>
+  <a href="https://arxiv.org/pdf/2607.11581"><img src="https://img.shields.io/badge/Paper-PDF-red?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="CycleGRPO paper PDF"></a>
+  <a href="https://arxiv.org/abs/2607.11581"><img src="https://img.shields.io/badge/arXiv-2607.11581-b31b1b?style=for-the-badge&logo=arxiv&logoColor=white" alt="CycleGRPO arXiv"></a>
+  <a href="https://huggingface.co/XinNUS/CycleGRPO-4B"><img src="https://img.shields.io/badge/Model-Spatial%204B-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="CycleGRPO spatial 4B model"></a>
+  <a href="https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data"><img src="https://img.shields.io/badge/Training-Data-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="CycleGRPO spatial training data"></a>
   <a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-1a73e8?style=for-the-badge" alt="ECCV 2026"></a>
 </p>
+
+[Generalized training](generalized/README.md) ·
+[Generalized models](#generalized-models) ·
+[Generalized data](#generalized-training-data) ·
+[Spatial training](#spatial-training) · [Citation](#citation)
 
 ## Generalized CycleGRPO: images and videos
 
@@ -15,8 +47,6 @@ The follow-up paper, **Generalized CycleGRPO for Fine-Grained Multimodal
 Understanding and Grounding**, extends the image region–text–region cycle to
 video intervals and timestamped spatial evidence.
 
-- [Generalized CycleGRPO paper](https://arxiv.org/html/2610.29552v1)
-- [Generalized project page](https://devinxzhang.github.io/Generalized-CycleGRPO-Page/)
 - [Video training, data preparation, and checkpoint instructions](generalized/README.md)
 - [Generalized training annotations (v1)](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1): all three RL subsets,
   plus the OMTG and Open-o3 co-SFT annotation sets.
@@ -24,8 +54,9 @@ video intervals and timestamped spatial evidence.
   `temporal_qwen`, `temporal_omtg`, or `openo3_mixed`. Set the corresponding
   model and data paths first.
 
-The image release and its commands appear below. The Models badge above links
-to the ECCV **spatial** model. The video releases are:
+### Generalized models
+
+The released video models cover the following temporal and spatio-temporal routes:
 
 | Model | Hugging Face |
 |---|---|
@@ -77,6 +108,11 @@ locatable**, without requiring caption ground truth during RL.
 
 ```
 verl/                     # RL engine (forked EasyR1/veRL): trainer, FSDP workers, vLLM rollout
+generalized/
+  verl/                   # video RL runtime
+  train.sh                # temporal_qwen / temporal_omtg / openo3_mixed
+  download_data.py         # versioned Generalized training annotations
+  README.md               # video setup, media preparation and training
 projects/
   rl/
     qwen3vl_4b_mt.sh       # >>> main image CycleGRPO training entry <<<
@@ -111,7 +147,7 @@ Without uv, install the same pins into a Python 3.11 environment with
 `pip install -r requirements.txt && pip install -e . --no-deps`.
 `requirements.txt` is exported from `uv.lock`.
 
-## Data & checkpoints
+## Spatial data and checkpoints
 
 Configure the public training launcher with the following paths:
 
@@ -133,7 +169,7 @@ Configure the public training launcher with the following paths:
   used by the GAR eval scripts. GAR-Bench is a separate public benchmark — get it
   from the official Grasp-Any-Region release.
 
-## Training
+## Spatial training
 
 Download the public co-SFT initialization and the released RL data, then
 launch ([`TRAIN.md`](TRAIN.md) covers the data layout, the paper
@@ -169,7 +205,7 @@ of memory. Pass any of these as extra arguments to the launcher, e.g.
 - `worker.rollout.n` should be a multiple of `world_size` (`nnodes × n_gpus`) when mixing
   cycle (region) and no-target sources, so the per-source sub-batches divide evenly across ranks.
 
-## Inference / evaluation
+## Spatial inference and evaluation
 
 Each benchmark lives under `evaluation/<benchmark>/`. The multi-GPU launchers
 validate every input path before loading a model, shard the dataset across
@@ -212,7 +248,7 @@ or GCG inference script; it reports every missing input at once and exits.
 Bounding-box generalization variants live in `evaluation/bbox/` and still use
 the `<PATH_TO_*>` placeholders inside the scripts.
 
-## Results
+## Spatial results
 
 Base **[SAMTok](https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok)** (Qwen3-VL-4B)
 versus **CycleGRPO** (this work). Two CycleGRPO rows are reported: **paper**
