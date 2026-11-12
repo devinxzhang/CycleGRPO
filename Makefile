@@ -3,6 +3,7 @@
 # Code written for this release: held to ruff's full rule set, formatting
 # included.
 FORMAT_PATHS := tests \
+	generalized/download_data.py generalized/tests/test_download_data.py \
 	evaluation/input_checks.py evaluation/test_input_checks.py \
 	evaluation/groundingsuite/gs_result_store.py evaluation/groundingsuite/test_gs_result_store.py \
 	projects/rl/datasets/check_rl_parquet.py \

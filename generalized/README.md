@@ -17,6 +17,9 @@ import the older image trainer. Run commands from the repository root.
 | `temporal_omtg` | OMTG-4B RL after bidirectional temporal co-SFT | Visually distinguishable temporal examples from OMTG |
 | `openo3_mixed` | Open-o3-Video-4B RL after inverse-caption + video-QA co-SFT | Spatial, temporal, spatio-temporal, and auxiliary video-QA mix from Open-o3-Video |
 
+The "Data preparation" section below gives the upstream sources for each of
+these three and the exact selection rule behind each partition.
+
 Do **not** substitute a generic Qwen Instruct checkpoint, the original OMTG
 checkpoint, or the original Open-o3 checkpoint for the corresponding co-SFT
 initialization. The inverse description interface is learned during co-SFT.
@@ -33,9 +36,9 @@ The separate video inference models are:
 - [Spatio-temporal: Open-o3 route](https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B),
   used for the main V-STaR and general-video comparisons.
 
-These are inference releases, not the co-SFT models that start RL. Curated
-training artifacts and the corresponding co-SFT initializations must be
-provided separately. No private experiment filesystem is a download endpoint.
+These are final inference models. The selected training annotations are
+available in the [v1 data release](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1);
+task-specific co-SFT initialization weights are supplied separately.
 
 ## Environment
 
@@ -130,6 +133,92 @@ from the environment. Never paste credentials into source or launch scripts.
 
 ## Data preparation
 
+### Download the selected annotations
+
+The [v1 data release](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1) contains JSONL annotations, frozen
+selection/split manifests and preparation tools. No images, videos, weights
+or frame caches are bundled, and no separate Hugging Face dataset download
+is required for these annotations.
+
+```bash
+python generalized/download_data.py
+D=data/generalized-cyclegrpo-rl-data
+python "$D/scripts/release_data.py" validate
+```
+
+The download is pinned to `generalized-data-v1` and SHA256-verified before extraction.
+Rerunning the command verifies an existing installation. To transfer the
+archive from another machine, use `python generalized/download_data.py
+--archive /path/to/archive.tar.gz`.
+
+| Profile | RL rows | Included co-SFT conversations |
+|---|---:|---:|
+| `temporal_qwen` | 18,742 | — |
+| `temporal_omtg` | 18,735 | 12,242 |
+| `openo3_mixed` | 35,887 | 9,201 |
+
+Obtain the original media from [OMTG](https://huggingface.co/datasets/insomnia7/omtg56k)
+and [Open-o3-Video](https://huggingface.co/datasets/marinero4972/Open-o3-Video),
+following the source-specific download instructions in the package's
+`docs/SOURCES.md`. Preserve the source directories listed in
+`manifests/media.jsonl`; some video IDs have multiple encoded copies.
+
+Generate the parquet for the profile you want to train:
+
+```bash
+# OMTG media root contains cosmo-cap/, moment10m/ and vtimellm/.
+python "$D/scripts/release_data.py" materialize --profile temporal_qwen \
+  --omtg-root /data/temporal_sources \
+  --output "$PWD/data/generalized_prepared/temporal_qwen.parquet"
+
+python "$D/scripts/release_data.py" materialize --profile temporal_omtg \
+  --omtg-root /data/temporal_sources \
+  --output "$PWD/data/generalized_prepared/temporal_omtg.parquet"
+
+# Open-o3 media root contains videos/ with the upstream directory layout.
+python "$D/scripts/release_data.py" materialize --profile openo3_mixed \
+  --openo3-root /data/Open-o3-Video-data \
+  --output "$PWD/data/generalized_prepared/openo3_mixed.parquet"
+
+MODEL_PATH=/models/temporal_qwen_cosft \
+TRAIN_FILE="$PWD/data/generalized_prepared/temporal_qwen.parquet" \
+bash generalized/train.sh temporal_qwen
+```
+
+The preparation tool checks media availability and recorded byte sizes before
+writing, preserves targets and row order, and refuses to overwrite outputs.
+`check-media` accepts the same profile/media-root arguments for a check without
+writing parquet. For new Open-o3 training, optional
+`--normalize-mcq-instruction` makes the output instruction enumerate the
+choices actually shown while preserving the original answer labels; the
+distributed JSONL retains the source prompts.
+
+For an included co-SFT set, add `--stage cosft` and choose a `.json` output.
+For example:
+
+```bash
+python "$D/scripts/release_data.py" materialize --profile temporal_omtg --stage cosft \
+  --omtg-root /data/temporal_sources \
+  --output "$PWD/data/generalized_prepared/temporal_omtg_cosft.json"
+```
+
+Qwen temporal co-SFT annotations and model initialization weights are outside
+this data release. The package documents its annotation provenance and
+component source licenses. The construction notes below describe the released
+subsets; downloading them avoids rebuilding the selection pipeline.
+
+### Spatio-temporal: Open-o3 route (`openo3_mixed`)
+
+Upstream sources, none of which this repository redistributes:
+
+- Annotations: [`marinero4972/Open-o3-Video`](https://huggingface.co/datasets/marinero4972/Open-o3-Video).
+  The converters read `json_data/STGR-RL.json` from it.
+- Videos: that dataset card lists the upstream video releases to fetch
+  separately, including VideoEspresso and Video-R1. Place them under
+  `<data root>/videos/` so the paths inside the JSON resolve.
+- Code and paper: [Open-o3-Video](https://github.com/marinero4972/Open-o3-Video),
+  [arXiv:2510.20579](https://arxiv.org/abs/2510.20579).
+
 The public converters under `projects/rl/datasets/` cover:
 
 1. `prepare_open_o3_unified_cyclegrpo.py`: build region-cycle rows from
@@ -143,11 +232,45 @@ The public converters under `projects/rl/datasets/` cover:
 
 Run each script with `--help` for its input/output arguments. Use
 `python -m projects.rl.datasets.<script_name>` from the repository root so
-package imports resolve. These scripts do not download source videos or
-reconstruct the private offline audit. The selected main mixture comprises
+package imports resolve. These scripts support building custom mixtures;
+the v1 download provides the selected annotations directly. Source videos are
+obtained separately. The selected main mixture comprises
 35,887 rows: 4,143 spatial, 4,820 temporal, 11,924 spatio-temporal, and 15,000 QA.
 Custom datasets may differ; do not describe a rebuilt mixture as the exact
 paper dataset without checking its audit and split manifests.
+
+### Temporal routes (`temporal_qwen`, `temporal_omtg`)
+
+Both selected subsets are included in the v1 download. They come from one
+intermediate table: a one-span conversion of the OMTG temporal-grounding
+training corpus (its cosmo-cap, Moment-10M, VTimeLLM and TimeLens CoT inputs),
+giving 36,892 rows over 9,491 storage-independent video IDs, one query and one
+target interval per row, with `source` set to `tg_multi_merged`.
+
+The public OMTG release is the place to start when rebuilding an equivalent
+table: [project page](https://insomniaaac.github.io/OMTG/),
+[`insomnia7/omtg56k`](https://huggingface.co/datasets/insomnia7/omtg56k) (46k
+SFT + 10k RL). Its row counts differ from the corpus used here, so a rebuild is
+an equivalent recipe, not the same rows.
+
+The two partitions are then selected as follows.
+
+`temporal_qwen` takes a video-disjoint half. The 9,491 unique video IDs are
+split 50/50 under seed 42 into a co-SFT half (4,746 videos) and an RL half
+(4,745 videos); the RL rows are the 18,742 rows whose video falls in the RL
+half. The property this buys is that the co-SFT initialization and the RL stage
+share no videos. It says nothing about the upstream OMTG SFT corpus, which does
+overlap these videos.
+
+`temporal_omtg` takes the visually distinguishable subset. Each row was audited
+for whether its target interval is visually distinguishable from the rest of its
+own video and covers one complete event. A row is kept when the audit completed
+and returned `keep` or `keep_singleton`: 18,735 of the 36,892 rows, over 7,240
+videos (18,507 `keep`, 228 `keep_singleton`; 148 rejected as non-atomic, 2,716
+for visual ambiguity, and 15,293 left at `review` and therefore dropped). The
+audit used an external vision-language judge over frame strips. The release
+includes the selected rows and frozen decisions, so using the dataset does
+not require running that judge again.
 
 Temporal parquets contain at least `videos`, `cap_problem`, `cap_answer`,
 `seg_problem`, `seg_answer`, and `source`. The cycle source is `tg_multi_merged`.

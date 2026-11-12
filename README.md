@@ -18,6 +18,8 @@ video intervals and timestamped spatial evidence.
 - [Generalized CycleGRPO paper](https://arxiv.org/html/2610.29552v1)
 - [Generalized project page](https://devinxzhang.github.io/Generalized-CycleGRPO-Page/)
 - [Video training, data preparation, and checkpoint instructions](generalized/README.md)
+- [Generalized training annotations (v1)](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1): all three RL subsets,
+  plus the OMTG and Open-o3 co-SFT annotation sets.
 - Training entry: `bash generalized/train.sh <profile>`, where `<profile>` is
   `temporal_qwen`, `temporal_omtg`, or `openo3_mixed`. Set the corresponding
   model and data paths first.
@@ -33,6 +35,26 @@ to the ECCV **spatial** model. The video releases are:
 
 These are final inference models. Training uses the corresponding co-SFT
 initialization described in the video documentation, not these final models.
+
+### Generalized training data
+
+Download the versioned JSONL annotation package from [GitHub Releases](https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1):
+
+```bash
+python generalized/download_data.py
+python data/generalized-cyclegrpo-rl-data/scripts/release_data.py validate
+```
+
+The downloader verifies the pinned SHA256 and extracts the package under
+`data/generalized-cyclegrpo-rl-data/`. The package contains **73,364 RL rows**:
+18,742 for `temporal_qwen`, 18,735 for `temporal_omtg` and 35,887 for
+`openo3_mixed`, plus 12,242 OMTG and 9,201 Open-o3 co-SFT conversations.
+Images and videos are downloaded from the original OMTG and Open-o3 sources.
+Use the included tools to connect those media and generate training parquet
+files; see [data preparation commands](generalized/README.md#data-preparation).
+
+For an offline transfer, download the [archive](https://github.com/devinxzhang/CycleGRPO/releases/download/generalized-data-v1/generalized-cyclegrpo-training-data-20261112.tar.gz) separately and run
+`python generalized/download_data.py --archive /path/to/archive.tar.gz`.
 
 ## ECCV 2026 spatial CycleGRPO
 
