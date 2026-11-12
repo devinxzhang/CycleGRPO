@@ -304,7 +304,7 @@ projects/
     format_prompt/          # prompt templates (non_thinking.jinja)
     datasets/               # scripts that build the RL parquet datasets
   transformers/             # VQ-SAM2 mask tokenizer + SAM2 model code
-  vlm/                      # model + eval helpers (refcoco loaders, IoU metrics)
+  vlm/                      # eval helpers: gRefCOCO/refcoco loaders, IoU metrics, GCG mapping
 generalized/
   verl/                     # video RL runtime
   train.sh                  # temporal_qwen / temporal_omtg / openo3_mixed

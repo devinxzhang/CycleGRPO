@@ -98,8 +98,8 @@ worker:
 trainer:
   total_epochs: 16
   max_steps: null
-  project_name: mask_tokenizer_grpo
-  experiment_name: qwen25vl_3b_gcg_ver_gres
+  project_name: cyclegrpo
+  experiment_name: cyclegrpo_qwen3vl_4b
   logger: ["file", "wandb"]
   nnodes: 1
   n_gpus_per_node: 8

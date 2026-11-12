@@ -22,7 +22,7 @@ from pycocotools import mask as mask_utils
 from xtuner.model.utils import guess_load_checkpoint
 
 from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
-from projects.vlm.vq_sam2.models import DirectResize
+from projects.vlm.transforms import DirectResize
 
 
 def draw_instance_predictions_cache(self, labels, np_masks, jittering: bool = True):

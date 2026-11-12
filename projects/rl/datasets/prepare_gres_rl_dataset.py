@@ -13,7 +13,7 @@ from pycocotools import mask as mask_utils
 from xtuner.model.utils import guess_load_checkpoint
 
 from projects.transformers.vq_sam2 import VQ_SAM2, SAM2Config, VQ_SAM2Config
-from projects.vlm.vq_sam2.models import DirectResize
+from projects.vlm.transforms import DirectResize
 
 
 def decode_mask(object_masks, ori_height, ori_width):
