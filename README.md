@@ -1,55 +1,33 @@
-<table>
-<tr>
-<td width="50%" align="center" valign="top">
+<div align="center">
 
-<h3>CycleGRPO &nbsp;·&nbsp; ECCV 2026</h3>
+### CycleGRPO &nbsp;·&nbsp; ECCV 2026
 
-<b>Actor as Its Own Critic:<br>Unifying Region Understanding<br>and Localization via CycleGRPO</b>
+**Actor as Its Own Critic: Unifying Region Understanding and Localization via CycleGRPO**
 
-<p>
 <a href="https://devinxzhang.github.io/CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-1a73e8?style=flat-square&logo=googlechrome&logoColor=white" alt="CycleGRPO project page"></a>
-<a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-5B2C8D?style=flat-square" alt="ECCV 2026"></a>
-<br>
 <a href="https://arxiv.org/abs/2607.11581"><img src="https://img.shields.io/badge/arXiv-2607.11581-b31b1b?style=flat-square&logo=arxiv&logoColor=white" alt="CycleGRPO arXiv"></a>
 <a href="https://arxiv.org/pdf/2607.11581"><img src="https://img.shields.io/badge/Paper-PDF-D83B01?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="CycleGRPO paper PDF"></a>
-</p>
-
-<p>
+<a href="https://eccv.ecva.net/"><img src="https://img.shields.io/badge/ECCV-2026-5B2C8D?style=flat-square" alt="ECCV 2026"></a>
+&nbsp;&nbsp;
 <a href="https://huggingface.co/XinNUS/CycleGRPO-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-CycleGRPO--4B-FFD21E?style=flat-square" alt="CycleGRPO-4B model"></a>
-<br>
 <a href="https://huggingface.co/datasets/XinNUS/CycleGRPO-RL-Data"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Data-CycleGRPO--RL--Data-FFD21E?style=flat-square" alt="CycleGRPO RL data"></a>
-<br>
 <a href="https://huggingface.co/zhouyik/Qwen3-VL-4B-SAMTok-co"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Init-Qwen3--VL--4B--SAMTok--co-FFD21E?style=flat-square" alt="Co-SFT initialization"></a>
-</p>
 
-</td>
-<td width="50%" align="center" valign="top">
+### Generalized CycleGRPO &nbsp;·&nbsp; arXiv preprint
 
-<h3>Generalized CycleGRPO &nbsp;·&nbsp; arXiv</h3>
+**Generalized CycleGRPO for Fine-Grained Multimodal Understanding and Grounding**
 
-<b>Generalized CycleGRPO for<br>Fine-Grained Multimodal<br>Understanding and Grounding</b>
-
-<p>
 <a href="https://devinxzhang.github.io/Generalized-CycleGRPO-Page/"><img src="https://img.shields.io/badge/Project-Page-1a73e8?style=flat-square&logo=googlechrome&logoColor=white" alt="Generalized CycleGRPO project page"></a>
-<a href="https://huggingface.co/datasets/XinNUS/DOVE-Bench"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Benchmark-DOVE--Bench-FFD21E?style=flat-square" alt="DOVE-Bench"></a>
-<br>
 <a href="https://arxiv.org/abs/2610.29552"><img src="https://img.shields.io/badge/arXiv-2610.29552-b31b1b?style=flat-square&logo=arxiv&logoColor=white" alt="Generalized CycleGRPO arXiv"></a>
 <a href="https://arxiv.org/pdf/2610.29552"><img src="https://img.shields.io/badge/Paper-PDF-D83B01?style=flat-square&logo=adobeacrobatreader&logoColor=white" alt="Generalized CycleGRPO paper PDF"></a>
-</p>
-
-<p>
+<a href="https://huggingface.co/datasets/XinNUS/DOVE-Bench"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Benchmark-DOVE--Bench-FFD21E?style=flat-square" alt="DOVE-Bench"></a>
+&nbsp;&nbsp;
 <a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-Temporal--4B-FFD21E?style=flat-square" alt="Generalized CycleGRPO Temporal 4B"></a>
-<br>
 <a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-Temporal-OMTG-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-Temporal--OMTG--4B-FFD21E?style=flat-square" alt="Generalized CycleGRPO Temporal OMTG 4B"></a>
-<br>
 <a href="https://huggingface.co/XinNUS/Generalized-CycleGRPO-SpatioTemporal-4B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-SpatioTemporal--4B-FFD21E?style=flat-square" alt="Generalized CycleGRPO SpatioTemporal 4B"></a>
-<br>
 <a href="https://github.com/devinxzhang/CycleGRPO/releases/tag/generalized-data-v1"><img src="https://img.shields.io/badge/Training%20Data-v1-2da44e?style=flat-square&logo=github&logoColor=white" alt="Generalized CycleGRPO training annotations v1"></a>
-</p>
 
-</td>
-</tr>
-</table>
+</div>
 
 ---
 

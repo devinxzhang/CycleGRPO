@@ -31,7 +31,7 @@ SHA256:
 f369777afd186ccecd9837cf9e319509a9145bb72d684d383e234675fe7703dc
 ```
 
-The package retains source annotation values. Optional
-`--normalize-mcq-instruction` on its preparation tool corrects auxiliary
-choice-instruction wording without changing answer labels. Source attribution
-and component license notes are included in the archive.
+Annotations are released as they appear in their sources. The preparation tool
+takes an optional `--normalize-mcq-instruction` flag, which rewrites
+multiple-choice instruction wording only and leaves answer labels unchanged.
+Source attribution and component license notes are included in the archive.
