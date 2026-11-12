@@ -1,24 +1,6 @@
 <div align="center">
 
-# CycleGRPO
-
-**The actor is its own critic — closing the caption ↔ grounding loop<br>for fine-grained multimodal understanding.**
-
-Official implementation, checkpoints and training data for **CycleGRPO** (ECCV 2026)
-and **Generalized CycleGRPO**, its extension to video.
-
-<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-3da639?style=flat-square" alt="License: Apache 2.0"></a>
-<img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11">
-<img src="https://img.shields.io/badge/PyTorch-2.8.0-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch 2.8.0">
-<img src="https://img.shields.io/badge/CUDA-12.8-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="CUDA 12.8">
-
-</div>
-
-<br>
-
-<div align="center">
-
-### CycleGRPO &nbsp;·&nbsp; ECCV 2026
+## CycleGRPO &nbsp;·&nbsp; ECCV 2026
 
 **Actor as Its Own Critic:<br>Unifying Region Understanding and Localization via CycleGRPO**
 
@@ -35,7 +17,7 @@ and **Generalized CycleGRPO**, its extension to video.
 
 <div align="center">
 
-### Generalized CycleGRPO &nbsp;·&nbsp; arXiv preprint
+## Generalized CycleGRPO &nbsp;·&nbsp; arXiv preprint
 
 **Generalized CycleGRPO for<br>Fine-Grained Multimodal Understanding and Grounding**
 
@@ -99,6 +81,11 @@ co-SFT initialization below, not from these.
 - [Citation](#citation)
 
 ## Installation
+
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-3da639?style=flat-square" alt="License: Apache 2.0"></a>
+<img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11">
+<img src="https://img.shields.io/badge/PyTorch-2.8.0-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch 2.8.0">
+<img src="https://img.shields.io/badge/CUDA-12.8-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="CUDA 12.8">
 
 One environment serves both releases, pinned to the stack every released run
 used: Python 3.11, torch 2.8.0 (CUDA 12.8), vLLM 0.11.0, transformers 4.57.1,
